@@ -6,6 +6,15 @@ from datetime import datetime
 TIMEOUT = 12
 MOZILLA_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
+ALL_PLATFORM_NAMES = [
+    "GitHub", "Reddit", "HackerNews", "Dev.to", "GitLab", "Tumblr",
+    "Instagram", "Facebook", "YouTube", "Twitter/X", "LinkedIn",
+    "Telegram", "Snapchat", "TikTok", "Quora", "Pastebin", "Pinterest",
+    "Medium", "Discord", "Steam", "ShareChat", "Koo", "Josh/Moj",
+    "Meesho", "OLX India", "Naukri.com", "JioCinema", "MX TakaTak",
+    "Roposo", "WhatsApp Business",
+]
+
 
 # ---------------------------------------------------------------------------
 # TIER 1 — Official APIs
@@ -415,6 +424,298 @@ async def check_profile_exists(
         }
 
 
+def _not_found(platform: str, url: str, post_label: str = "posts", note: Optional[str] = None) -> dict:
+    result = {
+        "platform": platform,
+        "found": False,
+        "url": url,
+        "posts": [],
+        "post_label": post_label,
+        "risk_signals": [],
+    }
+    if note:
+        result["note"] = note
+    return result
+
+
+async def check_profile_by_markers(
+    client: httpx.AsyncClient,
+    platform: str,
+    url: str,
+    username: str,
+    positive_markers: Optional[list[str]] = None,
+    negative_markers: Optional[list[str]] = None,
+    post_label: str = "posts",
+    note: Optional[str] = None,
+) -> dict:
+    """Generic public-page profile check with platform-specific marker hints."""
+    positive_markers = positive_markers or []
+    negative_markers = negative_markers or []
+    try:
+        r = await client.get(
+            url,
+            timeout=TIMEOUT,
+            headers={"User-Agent": MOZILLA_UA},
+            follow_redirects=True,
+        )
+        body = r.text.lower()
+        found = r.status_code == 200
+        if positive_markers:
+            found = found and any(marker.lower() in body for marker in positive_markers)
+        if negative_markers:
+            found = found and not any(marker.lower() in body[:3000] for marker in negative_markers)
+
+        return {
+            "platform": platform,
+            "found": found,
+            "url": url,
+            "display_name": username if found else None,
+            "bio": None,
+            "location": None,
+            "posts": [],
+            "post_label": post_label,
+            "risk_signals": [],
+            "note": note if found and note else None,
+        }
+    except Exception as e:
+        result = _not_found(platform, url, post_label)
+        result["error"] = str(e)
+        return result
+
+
+async def search_whatsapp_business(client: httpx.AsyncClient, phone: Optional[str]) -> dict:
+    if not phone:
+        return _not_found(
+            "WhatsApp Business",
+            "https://wa.me/",
+            "business profiles",
+            "Requires a phone pivot; unavailable during username-only scans",
+        )
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if len(digits) == 10:
+        digits = "91" + digits
+    url = f"https://wa.me/{digits}"
+    return await check_profile_by_markers(
+        client,
+        "WhatsApp Business",
+        url,
+        digits,
+        positive_markers=["whatsapp"],
+        negative_markers=["phone number shared via url is invalid"],
+        post_label="business profiles",
+        note="Public wa.me page exists; verify manually inside WhatsApp Business",
+    )
+
+
+# ---------------------------------------------------------------------------
+# India-specific platforms
+# ---------------------------------------------------------------------------
+
+async def search_facebook(client: httpx.AsyncClient, username: str) -> dict:
+    url = f"https://www.facebook.com/{username}"
+    try:
+        r = await client.get(url, timeout=TIMEOUT, headers={"User-Agent": MOZILLA_UA},
+                             follow_redirects=True)
+        # Facebook redirects to login for private profiles but returns 200 for public ones
+        found = r.status_code == 200 and "og:title" in r.text and "page not found" not in r.text.lower()
+        display_name = None
+        if found:
+            import re as _re
+            m = _re.search(r'og:title"\s+content="([^"]+)"', r.text)
+            display_name = m.group(1) if m else username
+        return {
+            "platform": "Facebook",
+            "found": found,
+            "url": url,
+            "display_name": display_name,
+            "bio": None,
+            "location": None,
+            "posts": [],
+            "post_label": "posts",
+            "risk_signals": [],
+        }
+    except Exception as e:
+        return {"platform": "Facebook", "found": False, "url": url,
+                "error": str(e), "posts": [], "post_label": "posts", "risk_signals": []}
+
+
+async def search_sharechat(client: httpx.AsyncClient, username: str) -> dict:
+    url = f"https://sharechat.com/profile/{username}"
+    try:
+        r = await client.get(url, timeout=TIMEOUT, headers={"User-Agent": MOZILLA_UA},
+                             follow_redirects=True)
+        found = r.status_code == 200 and "sharechat" in r.text.lower() and "404" not in r.text[:500]
+        return {
+            "platform": "ShareChat",
+            "found": found,
+            "url": url,
+            "display_name": username if found else None,
+            "bio": None,
+            "location": None,
+            "posts": [],
+            "post_label": "posts",
+            "risk_signals": [],
+            "note": "India-specific social platform" if found else None,
+        }
+    except Exception as e:
+        return {"platform": "ShareChat", "found": False, "url": url,
+                "error": str(e), "posts": [], "post_label": "posts", "risk_signals": []}
+
+
+async def search_koo(client: httpx.AsyncClient, username: str) -> dict:
+    url = f"https://www.kooapp.com/profile/{username}"
+    try:
+        r = await client.get(url, timeout=TIMEOUT, headers={"User-Agent": MOZILLA_UA},
+                             follow_redirects=True)
+        found = r.status_code == 200 and "koo" in r.text.lower() and "not found" not in r.text.lower()[:500]
+        return {
+            "platform": "Koo",
+            "found": found,
+            "url": url,
+            "display_name": username if found else None,
+            "bio": None,
+            "location": None,
+            "posts": [],
+            "post_label": "posts",
+            "risk_signals": [],
+            "note": "Indian microblogging platform" if found else None,
+        }
+    except Exception as e:
+        return {"platform": "Koo", "found": False, "url": url,
+                "error": str(e), "posts": [], "post_label": "posts", "risk_signals": []}
+
+
+async def search_discord(client: httpx.AsyncClient, username: str) -> dict:
+    url = f"https://discord.com/users/{username}"
+    try:
+        r = await client.get(
+            f"https://discordapp.com/api/v9/users/{username}",
+            timeout=TIMEOUT,
+            headers={"User-Agent": MOZILLA_UA},
+        )
+        found = r.status_code == 200
+        data = r.json() if found else {}
+        return {
+            "platform": "Discord",
+            "found": found,
+            "url": url,
+            "display_name": data.get("username", username) if found else None,
+            "bio": data.get("bio"),
+            "avatar": f"https://cdn.discordapp.com/avatars/{data.get('id')}/{data.get('avatar')}.png" if data.get("avatar") else None,
+            "location": None,
+            "posts": [],
+            "post_label": "messages",
+            "risk_signals": [],
+        }
+    except Exception as e:
+        return {"platform": "Discord", "found": False, "url": url,
+                "error": str(e), "posts": [], "post_label": "messages", "risk_signals": []}
+
+
+async def search_joshmoj(client: httpx.AsyncClient, username: str) -> dict:
+    url = f"https://share.myjosh.in/profile/{username}"
+    try:
+        r = await client.get(url, timeout=TIMEOUT, headers={"User-Agent": MOZILLA_UA},
+                             follow_redirects=True)
+        body = r.text.lower()
+        found = (
+            r.status_code == 200
+            and "josh_profile_confirmed_marker" in body
+            and "not found" not in body[:3000]
+            and "404" not in body[:3000]
+        )
+        return {
+            "platform": "Josh/Moj",
+            "found": found,
+            "url": url,
+            "display_name": username if found else None,
+            "bio": None,
+            "location": None,
+            "posts": [],
+            "post_label": "videos",
+            "risk_signals": [],
+            "note": "Indian short video platform" if found else None,
+        }
+    except Exception as e:
+        return {"platform": "Josh/Moj", "found": False, "url": url,
+                "error": str(e), "posts": [], "post_label": "videos", "risk_signals": []}
+
+
+# ---------------------------------------------------------------------------
+# Metadata extraction helper
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+# Script detection patterns for Indian languages
+_DEVANAGARI = _re.compile(r'[\u0900-\u097F]')     # Hindi, Marathi
+_KANNADA    = _re.compile(r'[\u0C80-\u0CFF]')     # Kannada
+_TAMIL      = _re.compile(r'[\u0B80-\u0BFF]')     # Tamil
+_TELUGU     = _re.compile(r'[\u0C00-\u0C7F]')     # Telugu
+_BENGALI    = _re.compile(r'[\u0980-\u09FF]')     # Bengali
+
+
+def extract_metadata(platform_result: dict) -> dict:
+    """Extract metadata from a platform result dict."""
+    meta = {
+        "languages_detected": [],
+        "locations_mentioned": [],
+        "posting_frequency": "unknown",
+        "account_age_days": None,
+    }
+
+    if not platform_result.get("found"):
+        return meta
+
+    # Language detection from bio + posts
+    bio = platform_result.get("bio") or ""
+    posts = platform_result.get("posts") or []
+    all_text = bio + " " + " ".join(
+        str(p.get("title", "")) + " " + str(p.get("description", ""))
+        for p in posts
+    )
+
+    if _DEVANAGARI.search(all_text):
+        meta["languages_detected"].append("Hindi/Devanagari")
+    if _KANNADA.search(all_text):
+        meta["languages_detected"].append("Kannada")
+    if _TAMIL.search(all_text):
+        meta["languages_detected"].append("Tamil")
+    if _TELUGU.search(all_text):
+        meta["languages_detected"].append("Telugu")
+    if _BENGALI.search(all_text):
+        meta["languages_detected"].append("Bengali")
+
+    # Location from platform data
+    loc = platform_result.get("location")
+    if loc:
+        meta["locations_mentioned"].append(loc)
+
+    # Account age
+    created = platform_result.get("created_at")
+    if created:
+        try:
+            created_dt = datetime.fromisoformat(created.replace("Z", "+00:00").replace("+00:00", ""))
+            meta["account_age_days"] = (datetime.utcnow() - created_dt).days
+        except Exception:
+            pass
+
+    # Posting frequency heuristic
+    post_count = len(posts)
+    repos = platform_result.get("public_repos", 0) or 0
+    total = post_count + repos
+    if total >= 5:
+        meta["posting_frequency"] = "active"
+    elif total >= 2:
+        meta["posting_frequency"] = "moderate"
+    elif total >= 1:
+        meta["posting_frequency"] = "low"
+    else:
+        meta["posting_frequency"] = "dormant"
+
+    return meta
+
+
 # ---------------------------------------------------------------------------
 # News search
 # ---------------------------------------------------------------------------
@@ -461,6 +762,10 @@ async def run_all_platforms(
     phone: Optional[str] = None,
     email: Optional[str] = None,
 ) -> list:
+    if not username and email and "@" in email:
+        username = email.split("@", 1)[0].split("+", 1)[0].replace(".", "")
+    if not username and real_name:
+        username = "".join(ch for ch in real_name.lower() if ch.isalnum())
     query = username or real_name or ""
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
@@ -487,21 +792,54 @@ async def run_all_platforms(
             tasks.append(check_profile_exists(
                 client, "Snapchat", f"https://www.snapchat.com/add/{username}", username))
             tasks.append(check_profile_exists(
-                client, "Pinterest", f"https://www.pinterest.com/{username}/", username, "og:type"))
-            tasks.append(check_profile_exists(
-                client, "SoundCloud", f"https://soundcloud.com/{username}", username))
-            tasks.append(check_profile_exists(
-                client, "Medium", f"https://medium.com/@{username}", username))
+                client, "YouTube", f"https://www.youtube.com/@{username}", username, "channelId"))
             tasks.append(check_profile_exists(
                 client, "Quora", f"https://www.quora.com/profile/{username}", username))
             tasks.append(check_profile_exists(
-                client, "Steam", f"https://steamcommunity.com/id/{username}", username, "profile_header"))
-            tasks.append(check_profile_exists(
                 client, "Pastebin", f"https://pastebin.com/u/{username}", username))
-            tasks.append(check_profile_exists(
-                client, "Flickr", f"https://www.flickr.com/people/{username}", username))
-            tasks.append(check_profile_exists(
-                client, "YouTube", f"https://www.youtube.com/@{username}", username, "channelId"))
+            tasks.append(check_profile_by_markers(
+                client, "Pinterest", f"https://www.pinterest.com/{username}/", username,
+                positive_markers=["pinterest_profile_confirmed_marker"], negative_markers=["page not found", "not found", "couldn't find"],
+                note="Pinterest is JS-heavy; manual verification may be required"))
+            tasks.append(check_profile_by_markers(
+                client, "Medium", f"https://medium.com/@{username}", username,
+                positive_markers=["medium"], negative_markers=["404", "page not found"]))
+            tasks.append(check_profile_by_markers(
+                client, "Steam", f"https://steamcommunity.com/id/{username}", username,
+                positive_markers=["steam", username], negative_markers=["specified profile could not be found", "error", "not found"]))
+
+            # --- India-specific platforms ---
+            tasks.append(search_facebook(client, username))
+            tasks.append(search_sharechat(client, username))
+            tasks.append(search_koo(client, username))
+            tasks.append(search_discord(client, username))
+            tasks.append(search_joshmoj(client, username))
+            tasks.append(check_profile_by_markers(
+                client, "Meesho", f"https://www.meesho.com/{username}", username,
+                positive_markers=["meesho"], negative_markers=["page not found", "not found"],
+                note="India-specific e-commerce seller/profile page"))
+            tasks.append(check_profile_by_markers(
+                client, "OLX India", f"https://www.olx.in/profile/{username}", username,
+                positive_markers=["olx"], negative_markers=["not found", "404"],
+                note="India classified listing profile"))
+            tasks.append(check_profile_by_markers(
+                client, "Naukri.com", f"https://www.naukri.com/mnjuser/profile?id={username}", username,
+                positive_markers=["naukri"], negative_markers=["not found", "login"],
+                note="Employment profile requires manual verification when gated"))
+            tasks.append(check_profile_by_markers(
+                client, "JioCinema", f"https://www.jiocinema.com/profile/{username}", username,
+                positive_markers=["jiocinema_profile_confirmed_marker"], negative_markers=["not found", "404"],
+                note="India-specific entertainment profile"))
+            tasks.append(check_profile_by_markers(
+                client, "MX TakaTak", f"https://www.mxtakatak.com/profile/{username}", username,
+                positive_markers=["mxtakatak", "mx takatak"], negative_markers=["not found", "404"],
+                note="Indian short-video profile"))
+            tasks.append(check_profile_by_markers(
+                client, "Roposo", f"https://www.roposo.com/profile/{username}", username,
+                positive_markers=["roposo"], negative_markers=["not found", "404"],
+                note="Indian short-video profile"))
+
+        tasks.append(search_whatsapp_business(client, phone))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -510,6 +848,20 @@ async def run_all_platforms(
             if isinstance(r, Exception):
                 continue
             if isinstance(r, dict):
+                # Attach metadata to each found result
+                r["metadata"] = extract_metadata(r)
                 platform_results.append(r)
 
+        seen = {p.get("platform") for p in platform_results}
+        for platform_name in ALL_PLATFORM_NAMES:
+            if platform_name not in seen:
+                placeholder = _not_found(
+                    platform_name,
+                    "",
+                    note="No automated check available for this pivot",
+                )
+                placeholder["metadata"] = extract_metadata(placeholder)
+                platform_results.append(placeholder)
+
+        platform_results.sort(key=lambda p: ALL_PLATFORM_NAMES.index(p["platform"]) if p.get("platform") in ALL_PLATFORM_NAMES else 999)
         return platform_results

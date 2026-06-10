@@ -10,6 +10,21 @@ THREAT_KEYWORDS = [
     "hack", "ddos", "ransom", "fraud", "scam", "fake", "burner", "anonymous",
     "darkweb", "dark web", "tor", "vpn always", "no trace", "untraceable",
     "swat", "doxx", "dox", "leak", "stalk", "threaten", "violence",
+    # Hindi threat keywords
+    "मारना", "धमकी", "बदला", "फर्जी", "ठगी", "धोखा", "हमला", "आतंक",
+    # Kannada threat keywords
+    "ಬೆದರಿಕೆ", "ಮೋಸ", "ನಕಲಿ", "ದಾಳಿ", "ಹಿಂಸೆ",
+    # Telugu threat keywords
+    "బెదిరింపు", "మోసం", "దాడి", "నకిలీ",
+    # Tamil threat keywords
+    "மோசடி", "அச்சுறுத்தல்", "தாக்குதல்",
+]
+
+# Impersonation keywords — accounts pretending to be official
+IMPERSONATION_KEYWORDS = [
+    "official", "support", "helpdesk", "help desk", "bank", "customer care",
+    "customercare", "service center", "govt", "government", "police",
+    "sbi", "hdfc", "icici", "paytm", "phonepe", "gpay",
 ]
 
 
@@ -117,6 +132,36 @@ def compute_risk_score(platform_results: list, query: str) -> dict:
         inc_score = 0
     score += inc_score
     breakdown["cross_platform_inconsistency"] = inc_score
+
+    # ------------------------------------------------------------------
+    # Factor 6 — India-specific signals (0–15 pts)
+    # ------------------------------------------------------------------
+    india_score = 0
+    query_lower = (query or "").lower()
+
+    # Impersonation detection — username contains official/support/bank keywords
+    for kw in IMPERSONATION_KEYWORDS:
+        if kw in query_lower:
+            india_score += 10
+            signals.append(f"Impersonation risk: username contains '{kw}' — possible fake official account")
+            break
+
+    # UPI ID / phone number mentioned in bio or posts
+    import re
+    for p in found_platforms:
+        bio = p.get("bio") or ""
+        if re.search(r"@(?:ybl|ibl|axl|oksbi|okaxis|okicici|paytm|upi)", bio, re.I):
+            india_score = min(india_score + 5, 15)
+            signals.append(f"UPI ID found in bio on {p['platform']} — financial activity signal")
+            break
+        if re.search(r"\b[6-9]\d{9}\b", bio):
+            india_score = min(india_score + 5, 15)
+            signals.append(f"Phone number found in bio on {p['platform']}")
+            break
+
+    india_score = min(india_score, 15)
+    score += india_score
+    breakdown["india_specific"] = india_score
 
     score = min(score, 100)
 

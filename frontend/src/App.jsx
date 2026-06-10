@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import GlobeScanner from "./components/GlobeScanner";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -1022,9 +1024,9 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 20px" }}>
+      <div style={{ position: "relative", zIndex: 9990, maxWidth: 1280, margin: "0 auto", padding: "28px 20px" }}>
         {/* SEARCH PANEL */}
-        <div style={{ ...card, padding: 28, marginBottom: 24 }}>
+        <div style={{ ...card, padding: 28, marginBottom: 24, position: "relative", zIndex: 10 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 11, color: modeAccent, letterSpacing: 2, fontWeight: 700 }}>
               {isPhoneMode ? "◈ PHONE INTELLIGENCE — TELECOM + UPI + FRAUD ANALYSIS" : isIdentityMode ? "◈ FIND BY IDENTITY — NAME + ORGANISATION SEARCH" : "◈ SUSPECT IDENTIFIER INPUT — 20-PLATFORM CONCURRENT SWEEP"}
@@ -1209,19 +1211,146 @@ export default function App() {
         )}
 
         {!result && !identityResult && !phoneResult && !anyLoading && (
-          <div style={{ textAlign: "center", padding: "70px 0", color: T.text3 }}>
-            <div style={{ fontSize: 60, marginBottom: 16, opacity: 0.2 }}>🛡</div>
-            <div style={{ fontSize: 12, letterSpacing: 2, marginBottom: 8 }}>
-              {isPhoneMode ? "ENTER AN INDIAN PHONE NUMBER FOR INTELLIGENCE ANALYSIS" : isIdentityMode ? "ENTER NAME + ORGANISATION TO FIND SOCIAL PROFILES" : "ENTER A SUSPECT IDENTIFIER TO BEGIN OSINT SWEEP"}
+          <div style={{ textAlign: "center", padding: "12px 0", color: T.text3, marginBottom: 10, position: "relative", zIndex: 10 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2, marginBottom: 6, fontWeight: 600, color: T.teal }}>
+              {isPhoneMode ? "◈ ENTER AN INDIAN PHONE NUMBER FOR INTELLIGENCE ANALYSIS" : isIdentityMode ? "◈ ENTER NAME + ORGANISATION TO FIND SOCIAL PROFILES" : "◈ ENTER A SUSPECT IDENTIFIER TO BEGIN OSINT SWEEP"}
             </div>
-            <div style={{ fontSize: 10 }}>
+            <div style={{ fontSize: 9, opacity: 0.6 }}>
               {isPhoneMode ? "Telecom circle · UPI identity map · NCCRP check · web mentions · risk scoring" : isIdentityMode ? "Web search + username checks · confidence scoring · 65B PDF" : "20 platforms concurrently · risk scoring · alias detection · 65B PDF"}
             </div>
+          </div>
+        )}
+
+        {/* PERSISTENT 3D GLOBE SCANNER BACKGROUND */}
+        {!result && !identityResult && !phoneResult && (
+          <div style={{
+            position: "fixed",
+            inset: 0,
+            width: "100vw",
+            height: "100vh",
+            zIndex: anyLoading ? 9998 : 1,
+            transition: "z-index 0.5s ease",
+            background: "#030508",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}>
+            <GlobeScanner isScanning={anyLoading} scanStep={scanStep} />
           </div>
         )}
       </div>
 
       {showShareModal && <ShareModal caseId={caseId} onClose={() => setShowShareModal(false)} />}
+
+      {/* FULLSCREEN GLOBE SCANNER OVERLAY */}
+      <AnimatePresence>
+        {anyLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "transparent",
+              zIndex: 9999,
+              display: "flex",
+              flexDirection: "column",
+              fontFamily: T.ff,
+              pointerEvents: "none"
+            }}
+          >
+            {/* Header info */}
+            <div style={{
+              position: "absolute",
+              top: 24, left: 32, right: 32,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              zIndex: 10,
+              pointerEvents: "auto"
+            }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 4, color: T.teal, textShadow: '0 0 10px rgba(99,202,183,0.4)' }}>
+                  🛡 SOCMINT SHIELD CORE
+                </div>
+                <div style={{ fontSize: 8, color: T.text3, letterSpacing: 1.5, marginTop: 4 }}>
+                  KARNATAKA CID CYBER UNIT · GEOGRAPHIC SWEEP
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: T.teal, fontFamily: T.ff }}>
+                  {Math.min(Math.round(((scanStep + 1) / (isIdentityMode ? 6 : isPhoneMode ? 7 : 8)) * 100), 99)}%
+                </div>
+                <div style={{ fontSize: 8, color: T.text3, letterSpacing: 1, marginTop: 4 }}>
+                  SWEEP PROGRESS
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Translucent Console overlay */}
+            <div style={{
+              position: "absolute",
+              bottom: 24, left: 32, right: 32,
+              background: "rgba(10, 22, 40, 0.85)",
+              backdropFilter: "blur(16px)",
+              border: `1px solid ${T.border}`,
+              borderRadius: 6,
+              padding: "16px 24px",
+              display: "grid",
+              gridTemplateColumns: "1fr 280px",
+              gap: 24,
+              zIndex: 10,
+              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+              pointerEvents: "auto"
+            }}>
+              <div>
+                <div style={{ fontSize: 10, color: T.teal, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>ACTIVE SCAN OPERATIONS</div>
+                <div style={{
+                  fontSize: 10,
+                  fontFamily: T.ff,
+                  lineHeight: 1.6,
+                  color: T.text2,
+                  height: 96,
+                  overflowY: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "end"
+                }}>
+                  {(isIdentityMode ? IDENTITY_STEPS : isPhoneMode ? PHONE_STEPS : SCAN_STEPS).slice(0, scanStep + 1).map((step, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8 }}>
+                      <span style={{ color: T.text3 }}>[{new Date().toTimeString().slice(0,8)}]</span>
+                      <span style={{ color: T.green }}>✓</span>
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                  <div style={{ color: T.teal, animation: "pulse-g 1.5s infinite", marginTop: 4 }}>
+                    ❯ SCANNING SATELLITE DATABASES...<span className="blink">_</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", borderLeft: `1px solid ${T.border}`, paddingLeft: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 4 }}>
+                  <span style={{ color: T.text3 }}>SEARCH MODE:</span>
+                  <span style={{ color: modeAccent, fontWeight: 700 }}>
+                    {searchMode.toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
+                  <span style={{ color: T.text3 }}>TARGET VAL:</span>
+                  <span style={{ color: T.teal, fontWeight: 700, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", maxWidth: 150 }}>
+                    {isIdentityMode ? identityInput.full_name : input[isPhoneMode ? "phone" : searchMode]}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

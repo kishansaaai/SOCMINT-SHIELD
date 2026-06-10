@@ -290,17 +290,175 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
         story.append(Spacer(1, 5 * mm))
 
     # -----------------------------------------------------------------------
+    # ENTITY RELATIONSHIP SUMMARY (NEW)
+    # -----------------------------------------------------------------------
+    if found_plats:
+        story.append(section_header("▸  6.  ENTITY RELATIONSHIP SUMMARY"))
+        story.append(Spacer(1, 2 * mm))
+        er_rows = [["Platform", "Display Name", "Relationship to Query", "Confidence"]]
+        for p in found_plats:
+            dn = p.get("display_name", "")
+            differs = dn.lower().strip() != query.lower().strip() if dn else False
+            rel = "Alias (differs)" if differs else "Consistent"
+            conf = "HIGH" if not differs else "MEDIUM"
+            er_rows.append([
+                p.get("platform", ""),
+                (dn or "")[:22],
+                rel,
+                conf,
+            ])
+        ert = Table(er_rows, colWidths=[32 * mm, 46 * mm, 50 * mm, 46 * mm])
+        ert.setStyle(TableStyle([
+            ("BACKGROUND",  (0, 0), (-1, 0), NAVY),
+            ("TEXTCOLOR",   (0, 0), (-1, 0), WHITE),
+            ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",    (0, 0), (-1, -1), 8),
+            ("GRID",        (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
+            ("PADDING",     (0, 0), (-1, -1), 4),
+        ]))
+        story.append(ert)
+
+        # Check for alias pattern
+        alias_count = sum(1 for a in alias_map if a.get("differs"))
+        if alias_count > 0:
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph(
+                f"<b>⚠ ALIAS PATTERN DETECTED:</b> {alias_count} platform(s) show display names "
+                "different from the searched identifier. This may indicate an attempt to obscure identity.",
+                BODY,
+            ))
+        story.append(Spacer(1, 5 * mm))
+
+    # -----------------------------------------------------------------------
+    # TEMPORAL ANALYSIS (NEW)
+    # -----------------------------------------------------------------------
+    dates_found = []
+    for p in found_plats:
+        created = p.get("created_at")
+        if created:
+            try:
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00").replace("+00:00", ""))
+                dates_found.append((p.get("platform", ""), dt))
+            except Exception:
+                pass
+
+    if dates_found:
+        story.append(section_header("▸  7.  TEMPORAL ANALYSIS"))
+        story.append(Spacer(1, 2 * mm))
+        dates_found.sort(key=lambda x: x[1])
+        earliest = dates_found[0]
+        latest = dates_found[-1]
+        story.append(Paragraph(
+            f"<b>Earliest activity:</b> {earliest[1].strftime('%d %B %Y')} on {earliest[0]}",
+            BODY,
+        ))
+        story.append(Paragraph(
+            f"<b>Most recent activity:</b> {latest[1].strftime('%d %B %Y')} on {latest[0]}",
+            BODY,
+        ))
+        # Check if multiple accounts created within same month
+        if len(dates_found) >= 2:
+            same_period = 0
+            for i in range(1, len(dates_found)):
+                if abs((dates_found[i][1] - dates_found[i-1][1]).days) < 30:
+                    same_period += 1
+            if same_period >= 2:
+                story.append(Paragraph(
+                    "<b>⚠ SUSPICIOUS:</b> Multiple accounts created within the same 30-day period "
+                    "— possible coordinated account setup.",
+                    BODY,
+                ))
+        story.append(Spacer(1, 5 * mm))
+
+    # -----------------------------------------------------------------------
+    # BREACH EXPOSURE (NEW)
+    # -----------------------------------------------------------------------
+    breach_data = profile_data.get("breach_data")
+    if breach_data and breach_data.get("breached"):
+        story.append(section_header("▸  8.  DATA BREACH EXPOSURE"))
+        story.append(Spacer(1, 2 * mm))
+        story.append(Paragraph(
+            f"<b>⚠ EMAIL FOUND IN {breach_data.get('total', 0)} KNOWN DATA BREACHES</b>",
+            style("BR", fontSize=10, fontName="Helvetica-Bold", textColor=RED, spaceAfter=4),
+        ))
+        br_rows = [["Breach Name", "Date", "Data Exposed"]]
+        for b in breach_data.get("breaches", [])[:8]:
+            data_types = ", ".join(b.get("data_classes", [])[:4])
+            br_rows.append([
+                b.get("name", ""),
+                b.get("date", ""),
+                data_types[:50],
+            ])
+        brt = Table(br_rows, colWidths=[50 * mm, 30 * mm, 94 * mm])
+        brt.setStyle(TableStyle([
+            ("BACKGROUND",  (0, 0), (-1, 0), NAVY),
+            ("TEXTCOLOR",   (0, 0), (-1, 0), WHITE),
+            ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",    (0, 0), (-1, -1), 8),
+            ("GRID",        (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
+            ("PADDING",     (0, 0), (-1, -1), 4),
+        ]))
+        story.append(brt)
+        story.append(Spacer(1, 5 * mm))
+
+    # -----------------------------------------------------------------------
+    # INVESTIGATIVE WORKFLOW NOTES (NEW)
+    # -----------------------------------------------------------------------
+    story.append(section_header("▸  9.  INVESTIGATIVE WORKFLOW NOTES"))
+    story.append(Spacer(1, 2 * mm))
+
+    # Auto-generated narrative
+    consistency = "consistent" if all(
+        not a.get("differs") for a in alias_map
+    ) else "inconsistent — multiple aliases detected"
+
+    narrative = (
+        f"Subject identifier '{query}' was found on {platforms_found} of {platforms_chk} "
+        f"platforms checked during the automated OSINT sweep. "
+        f"Display names across platforms are {consistency}. "
+    )
+    if geo:
+        locs = ", ".join(g['location'] for g in geo[:3])
+        narrative += f"Location mentions include: {locs}. "
+    if risk_score >= 70:
+        narrative += (
+            f"The composite risk score of {risk_score}/100 ({risk_level}) indicates "
+            "HIGH RISK — immediate investigation recommended. "
+        )
+    elif risk_score >= 40:
+        narrative += (
+            f"The composite risk score of {risk_score}/100 ({risk_level}) indicates "
+            "elevated risk — further investigation advised. "
+        )
+    else:
+        narrative += (
+            f"The composite risk score of {risk_score}/100 ({risk_level}) indicates "
+            "no immediate threat — standard monitoring recommended. "
+        )
+    narrative += (
+        "All data was collected from publicly accessible sources in compliance with the "
+        "DPDP Act 2023 and applicable OSINT guidelines."
+    )
+    story.append(Paragraph(narrative, BODY))
+    story.append(Spacer(1, 5 * mm))
+
+    # -----------------------------------------------------------------------
     # CHAIN OF CUSTODY
     # -----------------------------------------------------------------------
-    story.append(section_header("▸  6.  CHAIN OF CUSTODY"))
+    story.append(section_header("▸  10.  CHAIN OF CUSTODY"))
     story.append(Spacer(1, 2 * mm))
     coc_rows = [
         ["#", "Action", "Performed By", "Timestamp"],
-        ["1", "Digital data collection initiated", "SOCMINT Shield System v2.0", ts],
-        ["2", "20-platform OSINT sweep executed", "Async Platform Engine", ts],
+        ["1", "Digital data collection initiated", "SOCMINT Shield System v4.0", ts],
+        ["2", "30-platform OSINT sweep executed", "Async Platform Engine", ts],
         ["3", "Data aggregated & SHA-256 hashed", "Integrity Module", ts],
-        ["4", "Behavioural risk score computed", "Risk Engine v2.0", ts],
-        ["5", "Section 65B report generated & certified", officer_name, ts],
+        ["4", "Behavioural risk score computed", "Risk Engine v4.0", ts],
+        ["5", "Entity graph & timeline generated", "Analysis Engine v4.0", ts],
+        ["6", "Section 65B report generated & certified", officer_name, ts],
     ]
     coc = Table(coc_rows, colWidths=[8 * mm, 58 * mm, 54 * mm, 54 * mm])
     coc.setStyle(TableStyle([
@@ -327,16 +485,19 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
     cert_text = (
         f"I, <b>{officer_name}</b>, hereby certify that:<br/><br/>"
         "(a) The electronic record contained in this report was produced by the computer system known as "
-        "<b>SOCMINT Shield v2.0</b>, which was in regular use for lawful investigation activities by the "
+        "<b>SOCMINT Shield v4.0</b>, which was in regular use for lawful investigation activities by the "
         "Karnataka Criminal Investigation Department, Bengaluru.<br/><br/>"
         "(b) Throughout the material part of the said period, the computer was operating properly or, "
         "if not, was not operating in a manner that affected the electronic record or the accuracy of its contents.<br/><br/>"
         "(c) The information contained in the electronic record was reproduced from information supplied "
-        "to the computer in the ordinary course of the said activities and under lawful authority.<br/><br/>"
+        "to the computer in the ordinary course of the said activities and under lawful authority. Sources include "
+        "30 social media and India-specific platforms, email intelligence, data breach databases, paste site archives, "
+        "and Indian legal databases (Indian Kanoon, MCA21).<br/><br/>"
         f"(d) The data integrity verification hash (SHA-256: <b>{sha256[:48]}…</b>) confirms that this "
         f"electronic record has not been altered or tampered with since its collection on <b>{ts}</b>.<br/><br/>"
         "This certificate is issued pursuant to Section 65B(4) of the Indian Evidence Act, 1872 and "
-        "is admissible as primary evidence in courts of law throughout India under Section 65B(1)."
+        "is admissible as primary evidence in courts of law throughout India under Section 65B(1). "
+        "Data collection complies with the Digital Personal Data Protection Act, 2023."
     )
     story.append(Paragraph(cert_text, CERT))
     story.append(Spacer(1, 10 * mm))
@@ -357,7 +518,7 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
     story.append(Spacer(1, 5 * mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=MGRAY, spaceAfter=3))
     story.append(Paragraph(
-        f"SOCMINT Shield v2.0  |  Karnataka CID  |  Generated: {ts}  |  "
+        f"SOCMINT Shield v4.0  |  Karnataka CID  |  Generated: {ts}  |  "
         f"SHA-256: {sha256[:24]}…  |  CONFIDENTIAL — LAW ENFORCEMENT USE ONLY",
         FOOT,
     ))
