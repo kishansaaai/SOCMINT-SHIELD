@@ -70,6 +70,8 @@ class ReportRequest(BaseModel):
     profile_data: dict
     officer_name: str
     case_id: str
+    officer_station: Optional[str] = ""
+    officer_badge: Optional[str] = ""
 
 
 class GraphRequest(BaseModel):
@@ -218,7 +220,13 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
 
 @app.post("/api/report")
 def generate_report(req: ReportRequest, officer_token: Optional[str] = Depends(require_auth)):
-    pdf_bytes = generate_65b_report(req.profile_data, req.officer_name, req.case_id)
+    pdf_bytes = generate_65b_report(
+        req.profile_data,
+        req.officer_name,
+        req.case_id,
+        officer_station=req.officer_station,
+        officer_badge=req.officer_badge
+    )
     return {
         "pdf_base64": base64.b64encode(pdf_bytes).decode(),
         "filename": f"SOCMINT_65B_{req.case_id}.pdf",

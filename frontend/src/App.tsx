@@ -9,7 +9,7 @@ import EvasionTimeline from "./components/EvasionTimeline";
 import ShadowAccounts from "./components/ShadowAccounts";
 import WikidataCard from "./components/WikidataCard";
 import PhoneIntelCard from "./components/PhoneIntelCard";
-import { API_BASE, formatApiError, getHeaders } from "./config";
+import { API_BASE, formatApiError, getHeaders, getOfficerProfile, saveOfficerProfile } from "./config";
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
 const PLATFORM_ICONS = {
@@ -700,7 +700,17 @@ export default function App() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneError, setPhoneError]     = useState(null);
 
-  const [reportForm, setReportForm]           = useState({ officer: "", caseId: "" });
+  const [reportForm, setReportForm]           = useState(() => {
+    const profile = getOfficerProfile();
+    return {
+      officer: profile.name || "",
+      caseId: "",
+      station: profile.station || "",
+      badge: profile.badge || ""
+    };
+  });
+  const [officerProfile, setOfficerProfile]   = useState(() => getOfficerProfile());
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [reportLoading, setReportLoading]     = useState(false);
   const [showShareModal, setShowShareModal]   = useState(false);
   const [caseId]   = useState(() => `KA-CID-${Date.now().toString(36).toUpperCase()}`);
@@ -814,7 +824,13 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/report`, {
         method: "POST", headers: getHeaders(),
-        body: JSON.stringify({ profile_data: result, officer_name: reportForm.officer, case_id: reportForm.caseId }),
+        body: JSON.stringify({
+          profile_data: result,
+          officer_name: reportForm.officer,
+          case_id: reportForm.caseId,
+          officer_station: reportForm.station || "",
+          officer_badge: reportForm.badge || "",
+        }),
       });
       const data = await res.json();
       const bytes = Uint8Array.from(atob(data.pdf_base64), c => c.charCodeAt(0));
@@ -866,6 +882,9 @@ export default function App() {
           </div>
           <div className="mono" style={{ fontSize: 11, color: T.text3 }}>{time.toUTCString().slice(5, 25)} UTC</div>
           <div className="mono" style={{ fontSize: 10, color: T.teal, background: "rgba(99,202,183,0.08)", padding: "4px 12px", borderRadius: 20, border: `1px solid ${T.border}` }}>CASE: {caseId}</div>
+          <button onClick={() => setShowProfileModal(true)} style={{ fontSize: 10, color: T.text, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`, padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontFamily: T.ff, outline: "none" }}>
+            ⚙️ Officer Profile
+          </button>
         </div>
       </div>
 
@@ -1076,6 +1095,10 @@ export default function App() {
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                 <input value={reportForm.officer} onChange={e => setReportForm(p => ({ ...p, officer: e.target.value }))} placeholder="Investigating Officer Name"
                   style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
+                <input value={reportForm.badge} onChange={e => setReportForm(p => ({ ...p, badge: e.target.value }))} placeholder="Badge / ID Number"
+                  style={{ flex: 1, minWidth: 150, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
+                <input value={reportForm.station} onChange={e => setReportForm(p => ({ ...p, station: e.target.value }))} placeholder="Police Station / Agency"
+                  style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
                 <input value={reportForm.caseId} onChange={e => setReportForm(p => ({ ...p, caseId: e.target.value }))} placeholder="Case ID (e.g. CID/KA/2026/001)"
                   style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
                 <button onClick={handleReport} disabled={reportLoading || !reportForm.officer || !reportForm.caseId}
@@ -1123,6 +1146,86 @@ export default function App() {
       {result && <AiChat profileData={result} />}
 
       {showShareModal && <ShareModal caseId={caseId} onClose={() => setShowShareModal(false)} />}
+
+      <AnimatePresence>
+        {showProfileModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowProfileModal(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="glass-card"
+              style={{
+                width: "90%",
+                maxWidth: 420,
+                padding: 28,
+                border: `1px solid ${T.border2}`,
+                background: "rgba(10, 22, 40, 0.95)",
+                boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+                borderRadius: 12,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, letterSpacing: 2, color: T.teal, margin: 0 }}>⚙️ OFFICER PROFILE</h3>
+                <button onClick={() => setShowProfileModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: T.text3, fontSize: 18 }}>×</button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: 9, color: T.text3, letterSpacing: 1, display: "block", marginBottom: 6 }}>INVESTIGATING OFFICER NAME</label>
+                  <input
+                    value={officerProfile.name}
+                    onChange={e => setOfficerProfile(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Enter name"
+                    style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 9, color: T.text3, letterSpacing: 1, display: "block", marginBottom: 6 }}>BADGE / ID NUMBER</label>
+                  <input
+                    value={officerProfile.badge}
+                    onChange={e => setOfficerProfile(prev => ({ ...prev, badge: e.target.value }))}
+                    placeholder="Enter badge number"
+                    style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 9, color: T.text3, letterSpacing: 1, display: "block", marginBottom: 6 }}>POLICE STATION / AGENCY</label>
+                  <input
+                    value={officerProfile.station}
+                    onChange={e => setOfficerProfile(prev => ({ ...prev, station: e.target.value }))}
+                    placeholder="Enter police station"
+                    style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }}
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    const updated = { ...officerProfile, saved: true };
+                    setOfficerProfile(updated);
+                    saveOfficerProfile(updated);
+                    setReportForm(prev => ({
+                      ...prev,
+                      officer: updated.name,
+                      station: updated.station,
+                      badge: updated.badge,
+                    }));
+                    setShowProfileModal(false);
+                    alert("Officer profile saved successfully!");
+                  }}
+                  className="action-btn primary"
+                  style={{ width: "100%", padding: "12px 0", borderRadius: 8, fontWeight: 700, fontFamily: T.ff, fontSize: 11, cursor: "pointer", marginTop: 10 }}
+                >
+                  ✓ Save Profile Settings
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* FULLSCREEN GLOBE SCANNER OVERLAY */}
       <AnimatePresence>

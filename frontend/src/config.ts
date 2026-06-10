@@ -13,6 +13,28 @@ export const getHeaders = (headers: Record<string, string> = {}) => {
 };
 
 
+import { OfficerProfile } from "./types";
+
+export const getOfficerProfile = (): OfficerProfile => {
+  try {
+    const data = localStorage.getItem("officer_profile");
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error("Failed to parse officer profile from localStorage", e);
+  }
+  return { name: "", badge: "", station: "", saved: false };
+};
+
+export const saveOfficerProfile = (profile: OfficerProfile): void => {
+  try {
+    localStorage.setItem("officer_profile", JSON.stringify(profile));
+  } catch (e) {
+    console.error("Failed to save officer profile to localStorage", e);
+  }
+};
+
 export function formatApiError(err: any, apiBase: string = API_BASE): string {
   const msg = err?.message || String(err);
   if (msg === "Failed to fetch" || msg.includes("NetworkError") || msg.includes("fetch")) {

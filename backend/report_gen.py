@@ -38,7 +38,13 @@ def _risk_color(level: str):
     return {"HIGH": RED, "MEDIUM": AMBER, "LOW": BLUE, "MINIMAL": GREEN}.get(level, MGRAY)
 
 
-def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> bytes:
+def generate_65b_report(
+    profile_data: dict,
+    officer_name: str,
+    case_id: str,
+    officer_station: str = "",
+    officer_badge: str = ""
+) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -610,9 +616,9 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
 
     sig_data = [
         [f"Officer: {officer_name}", f"Case ID: {case_id}"],
-        ["Signature: _______________________", f"Date: {now.strftime('%d/%m/%Y')}"],
-        ["Designation: ____________________", "Official Seal:"],
-        ["Station: ________________________", ""],
+        [f"Badge / ID: {officer_badge}" if officer_badge else "Badge / ID: _____________________", f"Date: {now.strftime('%d/%m/%Y')}"],
+        [f"Station/Agency: {officer_station}" if officer_station else "Station: ________________________", "Official Seal:"],
+        ["Signature: _______________________", ""],
     ]
     sig_tbl = Table(sig_data, colWidths=[87 * mm, 87 * mm])
     sig_tbl.setStyle(TableStyle([
