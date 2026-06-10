@@ -8,7 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 
-from platforms import run_all_platforms
+from platforms import run_all_platforms, search_news
 from risk_engine import compute_risk_score
 from report_gen import generate_65b_report
 from identity_search import identity_search as run_identity_search
@@ -18,6 +18,7 @@ from ai_analysis import run_nexus_analysis, run_chat_analysis
 from breach_check import check_haveibeenpwned
 from email_intel import email_intelligence
 from paste_search import search_pastes
+from upi_search import trace_financial_footprint
 
 app = FastAPI(title="SOCMINT Shield API", version="4.0.0")
 
@@ -74,6 +75,15 @@ class TimelineRequest(BaseModel):
 
 class EmailIntelRequest(BaseModel):
     email: str
+
+
+class UpiSearchRequest(BaseModel):
+    query: str
+    phone: Optional[str] = None
+
+
+class NewsRequest(BaseModel):
+    query: str
 
 
 @app.get("/")
@@ -147,6 +157,15 @@ async def search(req: SearchRequest):
     except Exception:
         pass
 
+    # News & web mentions
+    news_articles = []
+    try:
+        import httpx
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            news_articles = await search_news(client, query)
+    except Exception:
+        pass
+
     elapsed = round(time.time() - start_time, 2)
 
     return {
@@ -161,6 +180,7 @@ async def search(req: SearchRequest):
         "timeline": timeline,
         "breach_data": breach_data,
         "paste_results": paste_results,
+        "news_articles": news_articles,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -221,6 +241,22 @@ async def email_intel(req: EmailIntelRequest):
     if not req.email.strip():
         raise HTTPException(status_code=400, detail="email is required")
     return await email_intelligence(req.email.strip())
+
+
+@app.post("/api/upi-search")
+async def upi_search(req: UpiSearchRequest):
+    if not req.query.strip() and not req.phone:
+        raise HTTPException(status_code=400, detail="query or phone is required")
+    return await trace_financial_footprint(req.query.strip(), req.phone)
+
+
+@app.post("/api/news")
+async def get_news(req: NewsRequest):
+    import httpx
+    if not req.query.strip():
+        return []
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        return await search_news(client, req.query.strip())
 
 
 @app.post("/api/graph")

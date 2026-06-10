@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import GlobeScanner from "./components/GlobeScanner";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+import AiChat from "./components/AiChat";
+import NetworkGraph from "./components/NetworkGraph";
+import FinancialFootprint from "./components/FinancialFootprint";
+import { API_BASE, formatApiError } from "./config";
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
 const PLATFORM_ICONS = {
@@ -54,12 +56,19 @@ const T = {
   ff:      "'IBM Plex Mono', 'Courier New', monospace",
 };
 
-const card = {
-  background: T.panel,
-  border: `1px solid ${T.border}`,
-  borderRadius: 12,
-  backdropFilter: "blur(8px)",
-};
+const cardClass = "glass-card";
+
+function SectionHeader({ icon, title, subtitle }) {
+  return (
+    <div className="section-header">
+      <div className="section-header-icon">{icon}</div>
+      <div>
+        <div className="section-header-title">{title}</div>
+        {subtitle && <div className="section-header-sub">{subtitle}</div>}
+      </div>
+    </div>
+  );
+}
 
 // ─── Risk Gauge SVG ───────────────────────────────────────────────────────────
 function RiskGauge({ score = 0, level = "MINIMAL" }) {
@@ -69,7 +78,7 @@ function RiskGauge({ score = 0, level = "MINIMAL" }) {
   const nx = 80 + 52 * Math.cos(rad(angle - 90));
   const ny = 80 + 52 * Math.sin(rad(angle - 90));
   return (
-    <div style={{ textAlign: "center" }}>
+    <div className="risk-gauge-wrap" style={{ "--gauge-color": c }}>
       <svg width="160" height="95" viewBox="0 0 160 95">
         <defs>
           <linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -96,7 +105,7 @@ function RiskGauge({ score = 0, level = "MINIMAL" }) {
 // ─── Skeleton Card ────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
-    <div style={{ ...card, padding: 14, overflow: "hidden" }}>
+    <div className={cardClass} style={{ padding: 14, overflow: "hidden" }}>
       <style>{`@keyframes skpulse{0%,100%{opacity:.4}50%{opacity:.9}}`}</style>
       {[80, 120, 60].map((w, i) => (
         <div key={i} style={{
@@ -115,28 +124,24 @@ function PlatformCard({ p }) {
   const found = p.found;
   const hasPosts = found && p.posts?.length > 0;
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
       onClick={() => found && setExpanded(e => !e)}
+      className={`${cardClass} platform-card glass-card-interactive ${found ? "found" : ""} ${expanded ? "expanded" : ""}`}
       style={{
-        ...card,
-        padding: "12px 14px",
-        opacity: found ? 1 : 0.38,
-        cursor: found ? "pointer" : "default",
+        opacity: found ? 1 : 0.42,
         border: `1px solid ${found ? (expanded ? T.teal : T.border) : "rgba(255,255,255,0.04)"}`,
-        transition: "border-color 0.2s, transform 0.15s",
-        transform: expanded ? "scale(1.01)" : "scale(1)",
       }}
     >
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 17 }}>{icon}</span>
         <span style={{ fontWeight: 700, fontSize: 12, color: found ? T.text : T.text3, letterSpacing: 0.5 }}>{p.platform}</span>
-        <span style={{
-          marginLeft: "auto", fontSize: 9, fontWeight: 700, letterSpacing: 1.2,
-          color: found ? T.teal : T.text3,
-          background: found ? "rgba(99,202,183,0.12)" : "rgba(71,85,105,0.2)",
-          padding: "2px 8px", borderRadius: 20,
-        }}>{found ? "✓ FOUND" : "NOT FOUND"}</span>
+        <span className={`platform-badge ${found ? "found" : "not-found"}`} style={{ marginLeft: "auto" }}>
+          {found ? "✓ FOUND" : "NOT FOUND"}
+        </span>
       </div>
       {/* Note for platforms that block automated checks */}
       {!found && p.note && (
@@ -189,13 +194,13 @@ function PlatformCard({ p }) {
           )}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
 function Chip({ label, val }) {
   return (
-    <span style={{ fontSize: 9, color: T.text2, background: "rgba(255,255,255,0.05)", padding: "2px 7px", borderRadius: 10 }}>
+    <span className="data-chip">
       <span style={{ color: T.text3 }}>{label} </span>{val}
     </span>
   );
@@ -203,21 +208,22 @@ function Chip({ label, val }) {
 
 // ─── Signal Badge ─────────────────────────────────────────────────────────────
 function SignalBadge({ signal }) {
-  return (
-    <div style={{
-      background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)",
-      borderRadius: 6, padding: "4px 12px", fontSize: 11, color: "#fca5a5",
-    }}>⚠ {signal}</div>
-  );
+  return <div className="signal-badge">⚠ {signal}</div>;
 }
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color = T.text }) {
+function StatCard({ icon, label, value, color = T.text, glow, delay = 0 }) {
   return (
-    <div style={{ ...card, padding: "18px 20px" }}>
-      <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1, marginBottom: 6 }}>{icon} {label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color, fontFamily: T.ff, letterSpacing: -1 }}>{value}</div>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay }}
+      className={`${cardClass} stat-card glass-card-accent-top`}
+      style={{ "--accent": glow || color }}
+    >
+      <div className="stat-label">{icon} {label}</div>
+      <div className="stat-value" style={{ color, "--stat-glow": glow || "rgba(99,202,183,0.08)" }}>{value}</div>
+    </motion.div>
   );
 }
 
@@ -226,10 +232,8 @@ function AliasMap({ aliases }) {
   if (!aliases?.length) return null;
   const differs = aliases.filter(a => a.differs);
   return (
-    <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-      <div style={{ fontSize: 11, color: T.teal, letterSpacing: 2, marginBottom: 14, fontWeight: 700 }}>
-        ◈ ALIAS / IDENTITY CORRELATION MAP
-      </div>
+    <div className={cardClass} style={{ padding: 24, marginBottom: 20 }}>
+      <SectionHeader icon="🔗" title="Alias / Identity Correlation Map" subtitle="Cross-platform username analysis" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
         {aliases.map((a, i) => (
           <div key={i} style={{
@@ -260,10 +264,8 @@ function AliasMap({ aliases }) {
 function GeoMentions({ geos }) {
   if (!geos?.length) return null;
   return (
-    <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-      <div style={{ fontSize: 11, color: T.teal, letterSpacing: 2, marginBottom: 14, fontWeight: 700 }}>
-        ◈ GEOLOCATION MENTIONS
-      </div>
+    <div className={cardClass} style={{ padding: 24, marginBottom: 20 }}>
+      <SectionHeader icon="📍" title="Geolocation Mentions" subtitle="Location signals from profiles" />
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {geos.map((g, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}>
@@ -281,17 +283,11 @@ function GeoMentions({ geos }) {
 function BehaviouralTimeline({ timeline }) {
   if (!timeline?.length) return null;
   return (
-    <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-      <div style={{ fontSize: 11, color: T.teal, letterSpacing: 2, marginBottom: 14, fontWeight: 700 }}>
-        ◈ BEHAVIOURAL ACTIVITY TIMELINE
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+    <div className={cardClass} style={{ padding: 24, marginBottom: 20 }}>
+      <SectionHeader icon="📊" title="Behavioural Activity Timeline" subtitle="Recent posts and interactions" />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 360, overflowY: "auto" }}>
         {timeline.map((item, i) => (
-          <div key={i} style={{
-            display: "flex", alignItems: "flex-start", gap: 10,
-            padding: "8px 10px", borderRadius: 6,
-            background: "rgba(255,255,255,0.03)", borderLeft: `2px solid ${T.teal}`,
-          }}>
+          <div key={i} className="timeline-item">
             <span style={{ fontSize: 13 }}>{PLATFORM_ICONS[item.platform] || "🌐"}</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 10, color: T.text3, marginBottom: 2 }}>{item.platform}</div>
@@ -313,53 +309,78 @@ function BehaviouralTimeline({ timeline }) {
 }
 
 // ─── News Panel ───────────────────────────────────────────────────────────────
-function NewsPanel({ query }) {
-  const [articles, setArticles] = useState([]);
-  const [loading, setLoading]   = useState(true);
+function NewsPanel({ query, preloaded }) {
+  const [articles, setArticles] = useState(preloaded || []);
+  const [loading, setLoading]   = useState(!preloaded?.length);
   const [error, setError]       = useState(null);
 
   useEffect(() => {
     if (!query) return;
+    if (preloaded?.length) {
+      setArticles(preloaded);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetch(
-      `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&pageSize=8&sortBy=relevancy&language=en&apiKey=demo`
-    )
-      .then(r => r.json())
+    setError(null);
+    fetch(`${API_BASE}/api/news`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    })
+      .then(r => {
+        if (!r.ok) {
+          throw new Error("Backend news proxy error");
+        }
+        return r.json();
+      })
       .then(d => {
-        const arts = (d.articles || []).filter(a => a.title && a.title !== "[Removed]");
-        setArticles(arts.slice(0, 8));
+        setArticles(d || []);
         setLoading(false);
       })
-      .catch(() => {
-        setError("NewsAPI unavailable (demo key). Replace with a real key for live results.");
+      .catch((err) => {
+        setError("Failed to retrieve web & news mentions from intelligence proxy.");
         setLoading(false);
       });
-  }, [query]);
+  }, [query, preloaded]);
 
   return (
-    <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-      <div style={{ fontSize: 11, color: T.teal, letterSpacing: 2, marginBottom: 14, fontWeight: 700 }}>
-        ◈ NEWS & WEB MENTIONS
-      </div>
-      {loading && <div style={{ fontSize: 12, color: T.text3 }}>Fetching news mentions…</div>}
+    <div className={cardClass} style={{ padding: 24, marginBottom: 20 }}>
+      <SectionHeader icon="📰" title="News & Web Mentions" subtitle="Open-web intelligence results" />
+      {loading && <div style={{ fontSize: 12, color: T.text3 }}>Fetching news & web intelligence…</div>}
       {error   && <div style={{ fontSize: 11, color: T.amber }}>⚠ {error}</div>}
       {!loading && !error && articles.length === 0 && (
-        <div style={{ fontSize: 11, color: T.text3 }}>No news articles found for this query.</div>
+        <div style={{ fontSize: 11, color: T.text3 }}>No news or web mentions found for this query.</div>
       )}
-      {articles.map((a, i) => (
-        <div key={i} style={{
-          padding: "10px 0", borderBottom: i < articles.length - 1 ? `1px solid ${T.border}` : "none",
-        }}>
-          <a href={a.url} target="_blank" rel="noreferrer"
-             style={{ fontSize: 12, color: T.text, textDecoration: "none", fontWeight: 600, lineHeight: 1.4, display: "block", marginBottom: 4 }}>
-            {a.title}
-          </a>
-          <div style={{ display: "flex", gap: 12, fontSize: 10, color: T.text3 }}>
-            <span>📰 {a.source?.name}</span>
-            {a.publishedAt && <span>🕐 {a.publishedAt?.slice(0, 10)}</span>}
+      {articles.map((a, i) => {
+        let domain = "Web Link";
+        try {
+          if (a.link) {
+            domain = new URL(a.link).hostname.replace("www.", "");
+          }
+        } catch (e) {}
+        return (
+          <div key={i} style={{
+            padding: "12px 0",
+            borderBottom: i < articles.length - 1 ? `1px solid ${T.border}` : "none",
+          }}>
+            <a href={a.link} target="_blank" rel="noreferrer"
+               style={{ fontSize: 13, color: T.teal, textDecoration: "none", fontWeight: 600, lineHeight: 1.4, display: "block", marginBottom: 4 }}>
+              {a.title}
+            </a>
+            {a.snippet && (
+              <div style={{ fontSize: 11, color: T.text, marginBottom: 6, lineHeight: 1.4 }}>
+                {a.snippet}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 12, fontSize: 10, color: T.text3 }}>
+              <span>🌐 {domain}</span>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -372,7 +393,7 @@ function ShareModal({ caseId, onClose }) {
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 999,
       display: "flex", alignItems: "center", justifyContent: "center",
     }} onClick={onClose}>
-      <div style={{ ...card, padding: 32, maxWidth: 440, width: "90%" }} onClick={e => e.stopPropagation()}>
+      <div className={cardClass} style={{ padding: 32, maxWidth: 440, width: "90%" }} onClick={e => e.stopPropagation()}>
         <div style={{ fontSize: 22, marginBottom: 12 }}>✅</div>
         <div style={{ fontWeight: 700, fontSize: 15, color: T.teal, marginBottom: 8, letterSpacing: 1 }}>
           PROFILE SHARED SECURELY
@@ -424,14 +445,16 @@ function CandidateCard({ candidate }) {
   const icon  = allIcons[candidate.platform] || "🌐";
 
   return (
-    <div style={{
-      ...card,
-      padding: "14px 16px",
-      border: `1px solid ${CONF_BORDER[lvl]}`,
-      marginBottom: 10,
-      cursor: "pointer",
-      transition: "border-color 0.2s",
-    }} onClick={() => setExpanded(e => !e)}>
+    <div
+      className={`${cardClass} glass-card-interactive`}
+      style={{
+        padding: "14px 16px",
+        border: `1px solid ${CONF_BORDER[lvl]}`,
+        marginBottom: 10,
+        cursor: "pointer",
+      }}
+      onClick={() => setExpanded(e => !e)}
+    >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 18 }}>{icon}</span>
@@ -550,10 +573,7 @@ function IdentityResults({ result }) {
   return (
     <div className="fade-in">
       {/* Summary header */}
-      <div style={{
-        ...card, padding: "16px 20px", marginBottom: 20,
-        borderLeft: `3px solid ${T.teal}`,
-      }}>
+      <div className={`${cardClass} glass-card-accent-top`} style={{ padding: "18px 22px", marginBottom: 20, "--accent": T.teal }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: T.teal, marginBottom: 4 }}>
           Found {total_found} profile{total_found !== 1 ? "s" : ""} likely belonging to{" "}
           <span style={{ color: T.text }}>{query.full_name}</span>{" "}
@@ -599,7 +619,7 @@ function IdentityResults({ result }) {
 
         {/* Right: username sidebar */}
         {username_candidates_checked?.length > 0 && (
-          <div style={{ ...card, padding: 16, position: "sticky", top: 72 }}>
+          <div className={cardClass} style={{ padding: 16, position: "sticky", top: 72 }}>
             <div style={{ fontSize: 10, color: T.teal, letterSpacing: 1.5, fontWeight: 700, marginBottom: 12 }}>
               USERNAMES CHECKED DIRECTLY
             </div>
@@ -687,8 +707,8 @@ function PhoneResults({ data }) {
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
       {/* SECTION 1 — TELECOM IDENTITY CARD */}
-      <div style={{ ...card, padding: 24, border: `1px solid ${opStyle.border}` }}>
-        <div style={{ fontSize: 10, color: T.text3, letterSpacing: 2, marginBottom: 14, fontWeight: 700 }}>◈ TELECOM IDENTITY</div>
+      <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, border: `1px solid ${opStyle.border}`, "--accent": opStyle.text }}>
+        <SectionHeader icon="📱" title="Telecom Identity" subtitle="Subscriber and operator intelligence" />
         <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 28, fontWeight: 700, fontFamily: T.ff, color: T.text, letterSpacing: 2 }}>{formatted}</div>
@@ -717,11 +737,11 @@ function PhoneResults({ data }) {
               <div style={{ fontSize: 9, color: T.text3, marginBottom: 4 }}>OPERATOR</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: opStyle.text }}>{telecom?.operator || "Unknown"}</div>
             </div>
-            <div style={{ ...card, borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
+            <div className={cardClass} style={{ borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
               <div style={{ fontSize: 9, color: T.text3, marginBottom: 4 }}>CIRCLE</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{telecom?.circle || "Unknown"}</div>
             </div>
-            <div style={{ ...card, borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
+            <div className={cardClass} style={{ borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
               <div style={{ fontSize: 9, color: T.text3, marginBottom: 4 }}>TYPE</div>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.amber }}>{telecom?.prepaid_likely ? "PREPAID" : "POSTPAID"}</div>
             </div>
@@ -730,9 +750,9 @@ function PhoneResults({ data }) {
       </div>
 
       {/* SECTION 2 — THREAT INDICATORS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
         {/* NCCRP */}
-        <div style={{ ...card, padding: 16, textAlign: "center" }}>
+        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": nccrp?.flagged ? T.red : T.green }}>
           <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 8 }}>NCCRP STATUS</div>
           {nccrp?.flagged
             ? <div style={{ fontSize: 22 }}>🔴</div>
@@ -745,30 +765,30 @@ function PhoneResults({ data }) {
           <a href={nccrp?.manual_url} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: T.teal, textDecoration: "none" }}>Check manually →</a>
         </div>
         {/* Risk score */}
-        <div style={{ ...card, padding: 16, textAlign: "center" }}>
-          <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 8 }}>RISK SCORE</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: riskC, fontFamily: T.ff }}>{risk_score?.score ?? 0}</div>
+        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": riskC }}>
+          <div className="stat-label">Risk Score</div>
+          <div className="stat-value" style={{ color: riskC }}>{risk_score?.score ?? 0}</div>
           <div style={{ fontSize: 10, fontWeight: 700, color: riskC }}>{risk_score?.level}</div>
         </div>
         {/* Fraud circle */}
-        <div style={{ ...card, padding: 16, textAlign: "center" }}>
-          <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 8 }}>FRAUD CIRCLE</div>
+        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": mule_patterns?.high_fraud_circle ? T.red : T.green }}>
+          <div className="stat-label">Fraud Circle</div>
           <div style={{ fontSize: 22 }}>{mule_patterns?.high_fraud_circle ? "🔴" : "🟢"}</div>
           <div style={{ fontSize: 10, fontWeight: 700, marginTop: 4, color: mule_patterns?.high_fraud_circle ? T.red : T.green }}>
             {mule_patterns?.high_fraud_circle ? "HIGH RISK AREA" : "NORMAL"}
           </div>
         </div>
         {/* Web complaints */}
-        <div style={{ ...card, padding: 16, textAlign: "center" }}>
-          <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 8 }}>WEB COMPLAINTS</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: fraudMentions.length > 0 ? T.red : T.green, fontFamily: T.ff }}>{fraudMentions.length}</div>
+        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": fraudMentions.length > 0 ? T.red : T.green }}>
+          <div className="stat-label">Web Complaints</div>
+          <div className="stat-value" style={{ color: fraudMentions.length > 0 ? T.red : T.green }}>{fraudMentions.length}</div>
           <div style={{ fontSize: 10, color: T.text2 }}>fraud mentions</div>
         </div>
       </div>
 
       {/* SECTION 3 — UPI IDENTITY MAP */}
-      <div style={{ ...card, padding: 20 }}>
-        <div style={{ fontSize: 11, color: T.teal, letterSpacing: 2, marginBottom: 4, fontWeight: 700 }}>◈ PROBABLE FINANCIAL IDENTITIES</div>
+      <div className={cardClass} style={{ padding: 24 }}>
+        <SectionHeader icon="💳" title="Probable Financial Identities" subtitle="Generated from phone number — verify before use" />
         <div style={{ fontSize: 10, color: T.amber, marginBottom: 14 }}>⚠ For investigator verification only — unconfirmed, generated from phone number</div>
         {["PhonePe","Google Pay","Paytm","Amazon Pay","BHIM","Freecharge","JioMoney","Airtel Payments Bank","IndusInd Bank","Bank of Maharashtra"].map(app => {
           const ids = (upi_ids || []).filter(u => u.app === app || u.provider === app);
@@ -797,16 +817,11 @@ function PhoneResults({ data }) {
 
       {/* SECTION 4 — WEB MENTIONS */}
       {(web_mentions || []).length > 0 && (
-        <div style={{ ...card, padding: 20 }}>
-          <div style={{ fontSize: 11, color: T.teal, letterSpacing: 2, marginBottom: 14, fontWeight: 700 }}>◈ WEB MENTIONS</div>
-          <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        <div className={cardClass} style={{ padding: 24 }}>
+          <SectionHeader icon="🌐" title="Web Mentions" subtitle="Fraud complaints, business listings, general references" />
+          <div className="filter-tab-bar">
             {[["all","All"],["fraud","Fraud"],["biz","Business"],["general","General"]].map(([tab, label]) => (
-              <button key={tab} onClick={() => setMentionTab(tab)} style={{
-                padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer",
-                fontFamily: T.ff, fontSize: 10, fontWeight: 600,
-                background: mentionTab === tab ? "rgba(99,202,183,0.15)" : "rgba(255,255,255,0.04)",
-                color: mentionTab === tab ? T.teal : T.text3,
-              }}>{label}</button>
+              <button key={tab} onClick={() => setMentionTab(tab)} className={`filter-tab ${mentionTab === tab ? "active" : ""}`}>{label}</button>
             ))}
           </div>
           {displayMentions.map((m, i) => {
@@ -829,8 +844,8 @@ function PhoneResults({ data }) {
       )}
 
       {/* SECTION 5 — INVESTIGATOR SUMMARY */}
-      <div style={{ ...card, padding: 20, borderLeft: `3px solid ${riskC}` }}>
-        <div style={{ fontSize: 11, color: T.teal, letterSpacing: 2, marginBottom: 12, fontWeight: 700 }}>◈ INVESTIGATOR SUMMARY</div>
+      <div className={`${cardClass} rec-banner`} style={{ padding: 24, borderLeft: `3px solid ${riskC}` }}>
+        <SectionHeader icon="📋" title="Investigator Summary" subtitle="Automated risk assessment narrative" />
         <div style={{ fontSize: 12, color: T.text, lineHeight: 1.8 }}>{summary}</div>
         {risk_score?.signals?.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
@@ -868,7 +883,14 @@ export default function App() {
   const [showShareModal, setShowShareModal]   = useState(false);
   const [caseId]   = useState(() => `KA-CID-${Date.now().toString(36).toUpperCase()}`);
   const [scanStep, setScanStep] = useState(0);
+  const [backendOnline, setBackendOnline] = useState(null);
   const resultsRef = useRef(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/health`)
+      .then((r) => setBackendOnline(r.ok))
+      .catch(() => setBackendOnline(false));
+  }, []);
 
   const isIdentityMode = searchMode === "identity";
   const isPhoneMode    = searchMode === "phone";
@@ -907,9 +929,9 @@ export default function App() {
     : isPhoneMode ? PHONE_STEPS[scanStep % PHONE_STEPS.length]
     : SCAN_STEPS[scanStep % SCAN_STEPS.length];
 
-  const handleSearch = useCallback(async (demoUsername = null) => {
+  const handleSearch = useCallback(async (demoUsername = null, phoneOverride = null) => {
     if (isPhoneMode) {
-      const ph = input.phone.trim();
+      const ph = (phoneOverride || input.phone).trim();
       if (!ph) return;
       setPhoneLoading(true); setPhoneError(null); setPhoneResult(null); setScanStep(0);
       try {
@@ -921,7 +943,7 @@ export default function App() {
         const data = await res.json();
         setPhoneResult(data);
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-      } catch (e) { setPhoneError(e.message); }
+      } catch (e) { setPhoneError(formatApiError(e)); }
       finally { setPhoneLoading(false); }
       return;
     }
@@ -939,7 +961,7 @@ export default function App() {
       setResult(data);
       setReportForm(prev => ({ ...prev, caseId }));
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(formatApiError(e)); }
     finally { setLoading(false); }
   }, [input, caseId, isPhoneMode]);
 
@@ -960,7 +982,7 @@ export default function App() {
       const data = await res.json();
       setIdentityResult(data);
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    } catch (e) { setIdentityError(e.message); }
+    } catch (e) { setIdentityError(formatApiError(e)); }
     finally { setIdentityLoading(false); }
   }, [identityInput]);
 
@@ -992,41 +1014,52 @@ export default function App() {
   const modeAccent = isIdentityMode ? T.orange : isPhoneMode ? "#22c55e" : T.teal;
 
   return (
-    <div style={{ minHeight: "100vh", background: `linear-gradient(160deg, ${T.navy} 0%, ${T.navy2} 55%, #0d2040 100%)`, fontFamily: T.ff, color: T.text }}>
+    <div className="dash-page">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
         * { box-sizing: border-box; }
-        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         @keyframes pulse   { 0%,100%{opacity:.5} 50%{opacity:1} }
         @keyframes fadeIn  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-        input::placeholder { color: #334155; } a { color: inherit; }
+        a { color: inherit; }
         .fade-in { animation: fadeIn 0.4s ease both; }
-        ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(99,202,183,0.25); border-radius: 3px; }
       `}</style>
 
       {/* TOP BAR */}
-      <div style={{ borderBottom: `1px solid ${T.border}`, background: "rgba(2,12,27,0.92)", backdropFilter: "blur(14px)", padding: "12px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 200 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 9, background: `linear-gradient(135deg, ${T.teal}, #3b82f6)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🛡</div>
+      <div className="dash-topbar">
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div className="dash-logo">🛡</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: 3, color: T.teal }}>SOCMINT SHIELD</div>
-            <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1.5 }}>KARNATAKA CID · OSINT INTELLIGENCE PLATFORM</div>
+            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: 3, color: T.teal }}>SOCMINT SHIELD</div>
+            <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1.2, marginTop: 2 }}>Karnataka CID · OSINT Intelligence Platform</div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, animation: "pulse 2s infinite" }} />
-            <span style={{ fontSize: 10, color: T.text2 }}>SYSTEM ONLINE</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className={backendOnline !== false ? "status-dot" : ""} style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: backendOnline === false ? T.red : backendOnline ? T.green : T.amber,
+            }} />
+            <span style={{ fontSize: 11, color: backendOnline === false ? T.red : T.text2, fontWeight: 500 }}>
+              {backendOnline === null ? "Checking API…" : backendOnline ? "API Online" : "API Offline"}
+            </span>
           </div>
-          <div style={{ fontSize: 10, color: T.text3 }}>{time.toUTCString().slice(5, 25)} UTC</div>
-          <div style={{ fontSize: 9, color: T.teal, background: "rgba(99,202,183,0.08)", padding: "3px 10px", borderRadius: 20, border: `1px solid ${T.border}` }}>CASE: {caseId}</div>
+          <div className="mono" style={{ fontSize: 11, color: T.text3 }}>{time.toUTCString().slice(5, 25)} UTC</div>
+          <div className="mono" style={{ fontSize: 10, color: T.teal, background: "rgba(99,202,183,0.08)", padding: "4px 12px", borderRadius: 20, border: `1px solid ${T.border}` }}>CASE: {caseId}</div>
         </div>
       </div>
 
       <div style={{ position: "relative", zIndex: 9990, maxWidth: 1280, margin: "0 auto", padding: "28px 20px" }}>
+        {backendOnline === false && (
+          <div className={cardClass} style={{
+            padding: "14px 18px", marginBottom: 16, border: "1px solid rgba(239,68,68,0.35)",
+            background: "rgba(239,68,68,0.08)", color: "#fca5a5", fontSize: 12, lineHeight: 1.6,
+          }}>
+            ⚠ Backend API is not reachable at <span style={{ fontFamily: T.ff }}>{API_BASE}</span>.
+            Start it in a terminal: <span style={{ fontFamily: T.ff, color: T.text }}>cd backend &amp;&amp; python -m uvicorn main:app --port 8000</span>
+          </div>
+        )}
+
         {/* SEARCH PANEL */}
-        <div style={{ ...card, padding: 28, marginBottom: 24, position: "relative", zIndex: 10 }}>
+        <div className={`${cardClass} search-panel glass-card-accent-top`} style={{ marginBottom: 24, position: "relative", zIndex: 10, "--accent": modeAccent }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 11, color: modeAccent, letterSpacing: 2, fontWeight: 700 }}>
               {isPhoneMode ? "◈ PHONE INTELLIGENCE — TELECOM + UPI + FRAUD ANALYSIS" : isIdentityMode ? "◈ FIND BY IDENTITY — NAME + ORGANISATION SEARCH" : "◈ SUSPECT IDENTIFIER INPUT — 20-PLATFORM CONCURRENT SWEEP"}
@@ -1039,37 +1072,33 @@ export default function App() {
                 <button onClick={() => handleIdentitySearch(true)} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid rgba(251,146,60,0.3)", background: "rgba(251,146,60,0.07)", color: T.orange, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO</button>
               )}
               {isPhoneMode && (
-                <button onClick={() => { setInput(p => ({ ...p, phone: "9845012345" })); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.07)", color: T.green, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO (9845012345)</button>
+                <button onClick={() => { setInput(p => ({ ...p, phone: "9845012345" })); handleSearch(null, "9845012345"); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.07)", color: T.green, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO (9845012345)</button>
               )}
             </div>
           </div>
 
           {/* Mode tabs */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap", "--mode-accent": modeAccent }}>
             {MODES.map(({ key, label }) => (
-              <button key={key} onClick={() => setSearchMode(key)} style={{
-                padding: "6px 14px", borderRadius: 6,
-                border: `1px solid ${searchMode === key ? modeAccent : T.border}`,
-                background: searchMode === key ? `${modeAccent}22` : "transparent",
-                color: searchMode === key ? modeAccent : T.text3,
-                cursor: "pointer", fontFamily: T.ff, fontSize: 10, fontWeight: 700, letterSpacing: 1, transition: "all 0.15s",
-              }}>{label}</button>
+              <button key={key} onClick={() => setSearchMode(key)}
+                className={`mode-tab ${searchMode === key ? "active" : ""}`}
+                style={{ "--mode-accent": modeAccent }}
+              >{label}</button>
             ))}
           </div>
 
           {/* Standard / Phone input */}
           {!isIdentityMode && (
             <div style={{ display: "flex", gap: 12 }}>
-              <input value={input[isPhoneMode ? "phone" : searchMode]}
+              <input className="search-input" value={input[isPhoneMode ? "phone" : searchMode]}
                 onChange={e => setInput(prev => ({ ...prev, [isPhoneMode ? "phone" : searchMode]: e.target.value }))}
                 onKeyDown={e => e.key === "Enter" && handleSearch()}
                 placeholder={inputPlaceholder}
-                style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: `1px solid ${modeAccent}44`, borderRadius: 8, padding: "12px 16px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
-              <button onClick={() => handleSearch()} disabled={anyLoading} style={{
-                padding: "12px 28px", borderRadius: 8, border: "none", cursor: anyLoading ? "not-allowed" : "pointer",
+                style={{ borderColor: `${modeAccent}44` }} />
+              <button className="search-btn" onClick={() => handleSearch()} disabled={anyLoading} style={{
+                cursor: anyLoading ? "not-allowed" : "pointer",
                 background: anyLoading ? "rgba(99,202,183,0.2)" : `linear-gradient(135deg, ${modeAccent}, #3b82f6)`,
                 color: anyLoading ? modeAccent : T.navy2,
-                fontWeight: 700, fontFamily: T.ff, fontSize: 12, letterSpacing: 1.5, minWidth: 130,
               }}>{anyLoading ? "SCANNING…" : isPhoneMode ? "🔍 ANALYSE" : "◈ SEARCH"}</button>
             </div>
           )}
@@ -1144,19 +1173,30 @@ export default function App() {
 
         {/* STANDARD OSINT RESULTS */}
         {result && !isIdentityMode && !isPhoneMode && (
-          <div ref={resultsRef} className="fade-in">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 200px", gap: 14, marginBottom: 20 }}>
-              <StatCard icon="🔍" label="PLATFORMS CHECKED" value={result.platforms_checked} />
-              <StatCard icon="✅" label="PROFILES FOUND"    value={result.platforms_found} color={T.teal} />
-              <StatCard icon="⏱" label="SCAN TIME"         value={`${result.elapsed_seconds}s`} />
-              <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <RiskGauge score={result.risk_score.score} level={result.risk_score.level} />
+          <motion.div ref={resultsRef} className="fade-in" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+            {/* Results hero */}
+            <div className={`${cardClass} results-hero glass-card-accent-top`} style={{ "--accent": riskColor }}>
+              <div>
+                <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1.5, marginBottom: 6, textTransform: "uppercase" }}>Target Identified</div>
+                <div className="results-query">{result.query}</div>
+                <div className="results-meta" style={{ marginTop: 10 }}>
+                  <span>🔍 {result.platforms_checked} platforms</span>
+                  <span>✅ {result.platforms_found} found</span>
+                  <span>⏱ {result.elapsed_seconds}s scan</span>
+                </div>
               </div>
+              <RiskGauge score={result.risk_score.score} level={result.risk_score.level} />
             </div>
 
-            <div style={{ ...card, padding: "12px 18px", marginBottom: 16, borderLeft: `3px solid ${riskColor}`, borderRadius: 8 }}>
-              <div style={{ fontSize: 10, color: T.text3, marginBottom: 4 }}>RECOMMENDATION</div>
-              <div style={{ fontSize: 12, color: T.text }}>{result.risk_score.recommendation}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
+              <StatCard icon="🔍" label="Platforms Checked" value={result.platforms_checked} delay={0.05} glow="rgba(59,130,246,0.12)" />
+              <StatCard icon="✅" label="Profiles Found" value={result.platforms_found} color={T.teal} delay={0.1} glow="rgba(99,202,183,0.15)" />
+              <StatCard icon="⏱" label="Scan Time" value={`${result.elapsed_seconds}s`} delay={0.15} glow="rgba(245,158,11,0.1)" />
+            </div>
+
+            <div className={`${cardClass} rec-banner`} style={{ borderLeft: `3px solid ${riskColor}` }}>
+              <div style={{ fontSize: 10, color: T.text3, marginBottom: 6, letterSpacing: 1, textTransform: "uppercase" }}>Recommendation</div>
+              <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{result.risk_score.recommendation}</div>
             </div>
 
             {result.risk_score.signals?.length > 0 && (
@@ -1166,35 +1206,45 @@ export default function App() {
             )}
 
             <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-              <button onClick={handleCopyJSON} style={{ padding: "8px 18px", borderRadius: 6, border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.04)", color: T.text2, cursor: "pointer", fontFamily: T.ff, fontSize: 11 }}>📋 Copy JSON</button>
-              <button onClick={() => setShowShareModal(true)} style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid rgba(99,202,183,0.3)", background: "rgba(99,202,183,0.07)", color: T.teal, cursor: "pointer", fontFamily: T.ff, fontSize: 11 }}>🔗 Share with Delhi Cyber Police</button>
+              <button className="action-btn" onClick={handleCopyJSON}>📋 Copy JSON</button>
+              <button className="action-btn primary" onClick={() => setShowShareModal(true)}>🔗 Share with Delhi Cyber Police</button>
             </div>
 
-            <div style={{ display: "flex", gap: 6, marginBottom: 16, borderBottom: `1px solid ${T.border}`, paddingBottom: 10, flexWrap: "wrap" }}>
-              {[["platforms",`Platforms (${result.platforms.length})`],["alias",`Alias Map (${result.alias_map?.length||0})`],["geo",`Geo (${result.geo_mentions?.length||0})`],["timeline",`Activity (${result.timeline?.length||0})`],["news","News & Web"]].map(([view, label]) => (
-                <button key={view} onClick={() => setActiveView(view)} style={{ padding: "6px 14px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: T.ff, fontSize: 10, fontWeight: 700, background: activeView === view ? "rgba(99,202,183,0.15)" : "transparent", color: activeView === view ? T.teal : T.text3 }}>{label.toUpperCase()}</button>
+            <div className="view-tab-bar">
+              {[
+                ["platforms", `Platforms (${result.platforms.length})`],
+                ["alias", `Alias Map (${result.alias_map?.length||0})`],
+                ["nexus", "Nexus Graph"],
+                ["financial", "Financial Footprint"],
+                ["geo", `Geo (${result.geo_mentions?.length||0})`],
+                ["timeline", `Activity (${result.timeline?.length||0})`],
+                ["news", "News & Web"]
+              ].map(([view, label]) => (
+                <button key={view} onClick={() => setActiveView(view)} className={`view-tab ${activeView === view ? "active" : ""}`}>{label}</button>
               ))}
             </div>
 
             {activeView === "platforms" && (
               <>
-                <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                <div className="filter-tab-bar">
                   {[["all",`All (${result.platforms.length})`],["found",`Found (${foundPlatforms.length})`],["not_found",`Not Found (${notFoundPlatforms.length})`]].map(([tab, label]) => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: T.ff, fontSize: 10, fontWeight: 600, background: activeTab === tab ? "rgba(99,202,183,0.12)" : "rgba(255,255,255,0.03)", color: activeTab === tab ? T.teal : T.text3 }}>{label}</button>
+                    <button key={tab} onClick={() => setActiveTab(tab)} className={`filter-tab ${activeTab === tab ? "active" : ""}`}>{label}</button>
                   ))}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10, marginBottom: 24 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}>
                   {displayPlatforms.map((p, i) => <PlatformCard key={i} p={p} />)}
                 </div>
               </>
             )}
             {activeView === "alias"    && <AliasMap aliases={result.alias_map} />}
+            {activeView === "nexus"    && <div className={cardClass} style={{ height: "600px", width: "100%", marginBottom: 24, overflow: "hidden" }}><NetworkGraph profileData={result} /></div>}
+            {activeView === "financial" && <FinancialFootprint profileData={result} />}
             {activeView === "geo"      && <GeoMentions geos={result.geo_mentions} />}
             {activeView === "timeline" && <BehaviouralTimeline timeline={result.timeline} />}
-            {activeView === "news"     && <NewsPanel query={result.query} />}
+            {activeView === "news"     && <NewsPanel query={result.query} preloaded={result.news_articles} />}
 
-            <div style={{ ...card, padding: 24, marginBottom: 20, border: "1px solid rgba(251,146,60,0.35)" }}>
-              <div style={{ fontSize: 11, color: T.orange, letterSpacing: 2, marginBottom: 16, fontWeight: 700 }}>◈ SECTION 65B DIGITAL EVIDENCE REPORT — INDIAN EVIDENCE ACT, 1872</div>
+            <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, marginBottom: 20, border: "1px solid rgba(251,146,60,0.35)", "--accent": T.orange }}>
+              <SectionHeader icon="📄" title="Section 65B Digital Evidence Report" subtitle="Indian Evidence Act, 1872 · Court-admissible export" />
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                 <input value={reportForm.officer} onChange={e => setReportForm(p => ({ ...p, officer: e.target.value }))} placeholder="Investigating Officer Name"
                   style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
@@ -1207,7 +1257,7 @@ export default function App() {
               </div>
               <div style={{ fontSize: 10, color: T.text3 }}>SHA-256 · chain of custody · alias map · officer certificate · court-admissible</div>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {!result && !identityResult && !phoneResult && !anyLoading && (
@@ -1230,16 +1280,19 @@ export default function App() {
             height: "100vh",
             zIndex: anyLoading ? 9998 : 1,
             transition: "z-index 0.5s ease",
-            background: "#030508",
+            background: "transparent",
             overflow: "hidden",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center"
+            justifyContent: "center",
+            pointerEvents: anyLoading ? "none" : "auto",
           }}>
             <GlobeScanner isScanning={anyLoading} scanStep={scanStep} />
           </div>
         )}
       </div>
+
+      {result && <AiChat profileData={result} />}
 
       {showShareModal && <ShareModal caseId={caseId} onClose={() => setShowShareModal(false)} />}
 

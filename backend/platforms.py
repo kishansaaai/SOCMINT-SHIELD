@@ -1,7 +1,9 @@
 import asyncio
+import os
 import httpx
 from typing import Optional
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 TIMEOUT = 12
 MOZILLA_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -720,36 +722,371 @@ def extract_metadata(platform_result: dict) -> dict:
 # News search
 # ---------------------------------------------------------------------------
 
-async def search_news(client: httpx.AsyncClient, query: str) -> list:
-    """Search NewsAPI for mentions. Returns list of article dicts."""
+NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
+
+
+def _parse_rss_items(xml_text: str, limit: int = 10) -> list:
+    """Parse RSS/XML feed into {title, link, snippet} dicts."""
+    items = []
     try:
-        r = await client.get(
-            "https://newsapi.org/v2/everything",
-            params={
-                "q": query,
-                "pageSize": 10,
-                "sortBy": "relevancy",
-                "language": "en",
-                "apiKey": "demo",
-            },
-            timeout=TIMEOUT,
-        )
-        if r.status_code == 200:
-            articles = r.json().get("articles", [])
-            return [
-                {
-                    "title": a.get("title", ""),
-                    "source": a.get("source", {}).get("name", ""),
-                    "url": a.get("url", ""),
-                    "publishedAt": a.get("publishedAt", ""),
-                    "description": a.get("description", ""),
-                }
-                for a in articles[:10]
-                if a.get("title") and "[Removed]" not in (a.get("title") or "")
-            ]
+        soup = BeautifulSoup(xml_text, "xml")
+        for item in soup.find_all("item")[:limit]:
+            title_tag = item.find("title")
+            link_tag = item.find("link")
+            title = title_tag.get_text(strip=True) if title_tag else ""
+            link = link_tag.get_text(strip=True) if link_tag else ""
+            snippet = ""
+            desc_tag = item.find("description")
+            if desc_tag:
+                snippet = BeautifulSoup(desc_tag.get_text(), "html.parser").get_text(strip=True)
+            if title and link:
+                items.append({
+                    "title": title,
+                    "link": link,
+                    "snippet": snippet[:300],
+                })
     except Exception:
         pass
-    return []
+    return items
+
+
+async def search_news(client: httpx.AsyncClient, query: str) -> list:
+    """Search news & web mentions via Google News RSS, Bing RSS, and optional NewsAPI."""
+    if not query or not query.strip():
+        return []
+
+    q = query.strip()
+    seen_links: set = set()
+    results: list = []
+
+    def add_unique(items: list):
+        for item in items:
+            link = item.get("link", "")
+            if link and link not in seen_links:
+                seen_links.add(link)
+                results.append(item)
+
+    # Google News RSS (no API key required)
+    try:
+        r = await client.get(
+            "https://news.google.com/rss/search",
+            params={"q": q, "hl": "en-IN", "gl": "IN", "ceid": "IN:en"},
+            headers={"User-Agent": MOZILLA_UA},
+            timeout=15,
+        )
+        if r.status_code == 200:
+            add_unique(_parse_rss_items(r.text, 10))
+    except Exception:
+        pass
+
+    # Bing web RSS for broader web mentions
+    try:
+        r = await client.get(
+            "https://www.bing.com/search",
+            params={"q": q, "format": "rss"},
+            headers={"User-Agent": MOZILLA_UA},
+            timeout=15,
+        )
+        if r.status_code == 200:
+            add_unique(_parse_rss_items(r.text, 8))
+    except Exception:
+        pass
+
+    # Optional NewsAPI if key is configured
+    if NEWSAPI_KEY:
+        try:
+            r = await client.get(
+                "https://newsapi.org/v2/everything",
+                params={
+                    "q": q,
+                    "pageSize": 10,
+                    "sortBy": "relevancy",
+                    "language": "en",
+                    "apiKey": NEWSAPI_KEY,
+                },
+                timeout=TIMEOUT,
+            )
+            if r.status_code == 200:
+                for a in r.json().get("articles", [])[:10]:
+                    title = a.get("title", "")
+                    if title and "[Removed]" not in title:
+                        add_unique([{
+                            "title": title,
+                            "link": a.get("url", ""),
+                            "snippet": (a.get("description") or "")[:300],
+                        }])
+        except Exception:
+            pass
+
+    return results[:15]
+
+
+def extract_username_from_url(url: str) -> Optional[tuple[str, str]]:
+    """
+    Given a URL, identify if it belongs to one of the supported social platforms
+    and return a tuple (platform_name, username).
+    """
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url.lower())
+        domain = parsed.netloc
+        path = parsed.path.strip("/")
+        
+        # Remove empty parts
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            return None
+            
+        username = parts[0]
+        if username.startswith("@"):
+            username = username[1:]
+            
+        # Check platforms
+        if "instagram.com" in domain:
+            if username not in ("p", "explore", "reel", "stories", "direct"):
+                return "Instagram", username
+        elif "twitter.com" in domain or "x.com" in domain:
+            if username not in ("search", "hashtag", "explore", "home", "i", "settings", "messages"):
+                return "Twitter/X", username
+        elif "github.com" in domain:
+            if username not in ("orgs", "topics", "explore", "trending", "marketplace", "sponsors", "about", "features", "search", "login", "join"):
+                return "GitHub", username
+        elif "youtube.com" in domain:
+            if parts[0].startswith("@"):
+                return "YouTube", parts[0][1:]
+            elif parts[0] == "user" and len(parts) > 1:
+                return "YouTube", parts[1]
+            elif parts[0] not in ("channel", "watch", "playlist", "feed", "c"):
+                return "YouTube", parts[0]
+        elif "linkedin.com" in domain:
+            if parts[0] == "in" and len(parts) > 1:
+                return "LinkedIn", parts[1]
+        elif "facebook.com" in domain:
+            if username not in ("pages", "groups", "sharer", "r.php", "login.php", "campaign", "recover"):
+                return "Facebook", username
+        elif "reddit.com" in domain:
+            if (parts[0] == "user" or parts[0] == "u") and len(parts) > 1:
+                return "Reddit", parts[1]
+        elif "t.me" in domain or "telegram.me" in domain:
+            if username not in ("share", "addstickers", "invoice"):
+                return "Telegram", username
+        elif "medium.com" in domain:
+            if parts[0].startswith("@"):
+                return "Medium", parts[0][1:]
+            elif len(parts) > 0:
+                return "Medium", username
+        elif "pinterest.com" in domain:
+            if username not in ("pin", "categories", "search", "today"):
+                return "Pinterest", username
+        elif "dev.to" in domain:
+            if username not in ("t", "enter", "podcasts", "videos", "stories"):
+                return "Dev.to", username
+        elif "gitlab.com" in domain:
+            if username not in ("explore", "help", "users", "groups"):
+                return "GitLab", username
+        elif "quora.com" in domain:
+            if parts[0] == "profile" and len(parts) > 1:
+                return "Quora", parts[1]
+        elif "steamcommunity.com" in domain:
+            if (parts[0] == "id" or parts[0] == "profiles") and len(parts) > 1:
+                return "Steam", parts[1]
+        elif "tumblr.com" in domain:
+            if parts[0] == "blog" and len(parts) > 1:
+                return "Tumblr", parts[1]
+            subdomains = domain.split(".")
+            if len(subdomains) > 2 and subdomains[0] not in ("www", "assets", "api", "embed"):
+                return "Tumblr", subdomains[0]
+    except Exception:
+        pass
+    return None
+
+
+async def discover_from_wikidata(client: httpx.AsyncClient, real_name: str) -> dict:
+    """
+    Use Wikipedia + Wikidata to find official social media handles for a person.
+    Wikidata stores curated, verified social-media identifiers as structured claims.
+    This is the most reliable source for public figures.
+    """
+    # Wikidata property → our internal platform name
+    PROPERTY_MAP = {
+        "P2002": "Twitter/X",       # Twitter username
+        "P2003": "Instagram",       # Instagram username
+        "P2397": "YouTube",         # YouTube channel ID
+        "P2013": "Facebook",        # Facebook ID / username
+        "P7085": "TikTok",          # TikTok username
+        "P3943": "Tumblr",          # Tumblr blog name
+        "P4265": "Reddit",          # Reddit username
+        "P3789": "Telegram",        # Telegram channel / username
+        "P6634": "LinkedIn",        # LinkedIn personal profile ID
+        "P9943": "Koo",             # Koo username
+    }
+
+    discovered: dict[str, str] = {}
+    try:
+        # Step 1: Search Wikipedia for the person
+        search_r = await client.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "list": "search",
+                "srsearch": real_name,
+                "format": "json",
+                "srlimit": 3,
+            },
+            headers={"User-Agent": "SOCMINT/2.0 (OSINT research tool)"},
+            timeout=15,
+        )
+        if search_r.status_code != 200:
+            return discovered
+
+        search_results = search_r.json().get("query", {}).get("search", [])
+        if not search_results:
+            return discovered
+
+        page_title = search_results[0]["title"]
+
+        # Step 2: Get the Wikidata entity ID via Wikipedia page-props
+        props_r = await client.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "titles": page_title,
+                "prop": "pageprops",
+                "format": "json",
+            },
+            headers={"User-Agent": "SOCMINT/2.0 (OSINT research tool)"},
+            timeout=15,
+        )
+        if props_r.status_code != 200:
+            return discovered
+
+        pages = props_r.json().get("query", {}).get("pages", {})
+        wikidata_id = None
+        for _pid, page_data in pages.items():
+            wikidata_id = page_data.get("pageprops", {}).get("wikibase_item")
+            break
+
+        if not wikidata_id:
+            return discovered
+
+        # Step 3: Fetch the Wikidata entity claims
+        wd_r = await client.get(
+            "https://www.wikidata.org/w/api.php",
+            params={
+                "action": "wbgetentities",
+                "ids": wikidata_id,
+                "props": "claims",
+                "format": "json",
+            },
+            headers={"User-Agent": "SOCMINT/2.0 (OSINT research tool)"},
+            timeout=15,
+        )
+        if wd_r.status_code != 200:
+            return discovered
+
+        entity = wd_r.json().get("entities", {}).get(wikidata_id, {})
+        claims = entity.get("claims", {})
+
+        for prop_id, platform in PROPERTY_MAP.items():
+            if prop_id not in claims:
+                continue
+            for claim in claims[prop_id]:
+                if claim.get("rank") == "deprecated":
+                    continue
+                snak = claim.get("mainsnak", {})
+                dv = snak.get("datavalue", {})
+                if dv.get("type") == "string":
+                    value = dv.get("value", "").strip()
+                    if value and platform not in discovered:
+                        # Clean up: remove leading @ if present
+                        if value.startswith("@"):
+                            value = value[1:]
+                        discovered[platform] = value
+                        break  # take the first non-deprecated value
+
+    except Exception as e:
+        import logging
+        logging.warning(f"[Wikidata] Error discovering handles for '{real_name}': {e}")
+
+    return discovered
+
+
+async def _discover_from_google_news(client: httpx.AsyncClient, real_name: str) -> dict:
+    """
+    Fallback: search Google News RSS for social-media profile URLs
+    mentioned in news articles about the person.
+    """
+    discovered = {}
+    try:
+        query = (
+            f'"{real_name}" (site:instagram.com OR site:twitter.com OR '
+            f'site:x.com OR site:youtube.com OR site:linkedin.com OR '
+            f'site:facebook.com OR site:github.com)'
+        )
+        r = await client.get(
+            "https://news.google.com/rss/search",
+            params={"q": query},
+            timeout=12,
+        )
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "xml")
+            items = soup.find_all("item")
+
+            import re
+            for item in items:
+                title = item.find("title").text if item.find("title") else ""
+                m = re.search(r'\(@([a-zA-Z0-9._-]+)\)', title)
+                if m:
+                    username = m.group(1)
+                    source = (item.find("source").text if item.find("source") else "").lower()
+                    platform = None
+                    if "instagram" in source or "instagram" in title.lower():
+                        platform = "Instagram"
+                    elif "twitter" in source or "x.com" in source or "twitter" in title.lower():
+                        platform = "Twitter/X"
+                    elif "youtube" in source or "youtube" in title.lower():
+                        platform = "YouTube"
+                    if platform and platform not in discovered:
+                        discovered[platform] = username
+
+            try:
+                from googlenewsdecoder import gnewsdecoder
+                for item in items[:6]:
+                    link = item.find("link").text if item.find("link") else ""
+                    if link:
+                        res = gnewsdecoder(link)
+                        if res.get("status") and res.get("decoded_url"):
+                            parsed = extract_username_from_url(res["decoded_url"])
+                            if parsed:
+                                plat, user = parsed
+                                if plat not in discovered:
+                                    discovered[plat] = user
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return discovered
+
+
+async def discover_real_usernames(client: httpx.AsyncClient, real_name: str) -> dict:
+    """
+    Multi-source discovery pipeline:
+      1. Wikidata (highest quality — curated, structured)
+      2. Google News RSS (fallback — lower quality, may contain fan accounts)
+    """
+    # Primary: Wikidata
+    discovered = await discover_from_wikidata(client, real_name)
+
+    # Fallback: Google News RSS fills in any platforms Wikidata didn't cover
+    try:
+        news_extra = await _discover_from_google_news(client, real_name)
+        for plat, user in news_extra.items():
+            if plat not in discovered:
+                discovered[plat] = user
+    except Exception:
+        pass
+
+    return discovered
 
 
 # ---------------------------------------------------------------------------
@@ -768,74 +1105,88 @@ async def run_all_platforms(
         username = "".join(ch for ch in real_name.lower() if ch.isalnum())
     query = username or real_name or ""
 
+    # Map each platform to the username to check.
+    # By default, use the derived/concatenated `username`.
+    platform_usernames = {plat: username for plat in ALL_PLATFORM_NAMES}
+
     async with httpx.AsyncClient(follow_redirects=True) as client:
+        # If we have a real_name, discover real/official usernames from search
+        if real_name:
+            discovered = await discover_real_usernames(client, real_name)
+            for plat, user in discovered.items():
+                platform_usernames[plat] = user
+
         tasks = []
 
         if username:
             # --- TIER 1: API-based ---
-            tasks.append(search_github(client, username))
-            tasks.append(search_reddit(client, username))
-            tasks.append(search_hackernews(client, username))
-            tasks.append(search_devto(client, username))
-            tasks.append(search_gitlab(client, username))
-            tasks.append(search_tumblr(client, username))
+            tasks.append(search_github(client, platform_usernames["GitHub"]))
+            tasks.append(search_reddit(client, platform_usernames["Reddit"]))
+            tasks.append(search_hackernews(client, platform_usernames["HackerNews"]))
+            tasks.append(search_devto(client, platform_usernames["Dev.to"]))
+            tasks.append(search_gitlab(client, platform_usernames["GitLab"]))
+            tasks.append(search_tumblr(client, platform_usernames["Tumblr"]))
 
             # --- TIER 2: HTTP checks ---
             tasks.append(check_profile_exists(
-                client, "Twitter/X", f"https://twitter.com/{username}", username, "profile_image_url"))
-            tasks.append(search_instagram(client, username))
+                client, "Twitter/X", f"https://twitter.com/{platform_usernames['Twitter/X']}", platform_usernames['Twitter/X'], "profile_image_url"))
+            tasks.append(search_instagram(client, platform_usernames["Instagram"]))
             tasks.append(check_profile_exists(
-                client, "TikTok", f"https://www.tiktok.com/@{username}", username))
-            tasks.append(search_linkedin(client, username))
+                client, "TikTok", f"https://www.tiktok.com/@{platform_usernames['TikTok']}", platform_usernames['TikTok']))
+            tasks.append(search_linkedin(client, platform_usernames["LinkedIn"]))
             tasks.append(check_profile_exists(
-                client, "Telegram", f"https://t.me/{username}", username, "tgme_page_title"))
+                client, "Telegram", f"https://t.me/{platform_usernames['Telegram']}", platform_usernames['Telegram'], "tgme_page_title"))
             tasks.append(check_profile_exists(
-                client, "Snapchat", f"https://www.snapchat.com/add/{username}", username))
+                client, "Snapchat", f"https://www.snapchat.com/add/{platform_usernames['Snapchat']}", platform_usernames['Snapchat']))
+            yt_user = platform_usernames['YouTube']
+            yt_url = (f"https://www.youtube.com/channel/{yt_user}"
+                      if yt_user and yt_user.startswith("UC")
+                      else f"https://www.youtube.com/@{yt_user}")
             tasks.append(check_profile_exists(
-                client, "YouTube", f"https://www.youtube.com/@{username}", username, "channelId"))
+                client, "YouTube", yt_url, yt_user, "channelId"))
             tasks.append(check_profile_exists(
-                client, "Quora", f"https://www.quora.com/profile/{username}", username))
+                client, "Quora", f"https://www.quora.com/profile/{platform_usernames['Quora']}", platform_usernames['Quora']))
             tasks.append(check_profile_exists(
-                client, "Pastebin", f"https://pastebin.com/u/{username}", username))
+                client, "Pastebin", f"https://pastebin.com/u/{platform_usernames['Pastebin']}", platform_usernames['Pastebin']))
             tasks.append(check_profile_by_markers(
-                client, "Pinterest", f"https://www.pinterest.com/{username}/", username,
+                client, "Pinterest", f"https://www.pinterest.com/{platform_usernames['Pinterest']}/", platform_usernames['Pinterest'],
                 positive_markers=["pinterest_profile_confirmed_marker"], negative_markers=["page not found", "not found", "couldn't find"],
                 note="Pinterest is JS-heavy; manual verification may be required"))
             tasks.append(check_profile_by_markers(
-                client, "Medium", f"https://medium.com/@{username}", username,
+                client, "Medium", f"https://medium.com/@{platform_usernames['Medium']}", platform_usernames['Medium'],
                 positive_markers=["medium"], negative_markers=["404", "page not found"]))
             tasks.append(check_profile_by_markers(
-                client, "Steam", f"https://steamcommunity.com/id/{username}", username,
-                positive_markers=["steam", username], negative_markers=["specified profile could not be found", "error", "not found"]))
+                client, "Steam", f"https://steamcommunity.com/id/{platform_usernames['Steam']}", platform_usernames['Steam'],
+                positive_markers=["steam", platform_usernames['Steam']], negative_markers=["specified profile could not be found", "error", "not found"]))
 
             # --- India-specific platforms ---
-            tasks.append(search_facebook(client, username))
-            tasks.append(search_sharechat(client, username))
-            tasks.append(search_koo(client, username))
-            tasks.append(search_discord(client, username))
-            tasks.append(search_joshmoj(client, username))
+            tasks.append(search_facebook(client, platform_usernames["Facebook"]))
+            tasks.append(search_sharechat(client, platform_usernames["ShareChat"]))
+            tasks.append(search_koo(client, platform_usernames["Koo"]))
+            tasks.append(search_discord(client, platform_usernames["Discord"]))
+            tasks.append(search_joshmoj(client, platform_usernames["Josh/Moj"]))
             tasks.append(check_profile_by_markers(
-                client, "Meesho", f"https://www.meesho.com/{username}", username,
+                client, "Meesho", f"https://www.meesho.com/{platform_usernames['Meesho']}", platform_usernames['Meesho'],
                 positive_markers=["meesho"], negative_markers=["page not found", "not found"],
                 note="India-specific e-commerce seller/profile page"))
             tasks.append(check_profile_by_markers(
-                client, "OLX India", f"https://www.olx.in/profile/{username}", username,
+                client, "OLX India", f"https://www.olx.in/profile/{platform_usernames['OLX India']}", platform_usernames['OLX India'],
                 positive_markers=["olx"], negative_markers=["not found", "404"],
                 note="India classified listing profile"))
             tasks.append(check_profile_by_markers(
-                client, "Naukri.com", f"https://www.naukri.com/mnjuser/profile?id={username}", username,
+                client, "Naukri.com", f"https://www.naukri.com/mnjuser/profile?id={platform_usernames['Naukri.com']}", platform_usernames['Naukri.com'],
                 positive_markers=["naukri"], negative_markers=["not found", "login"],
                 note="Employment profile requires manual verification when gated"))
             tasks.append(check_profile_by_markers(
-                client, "JioCinema", f"https://www.jiocinema.com/profile/{username}", username,
+                client, "JioCinema", f"https://www.jiocinema.com/profile/{platform_usernames['JioCinema']}", platform_usernames['JioCinema'],
                 positive_markers=["jiocinema_profile_confirmed_marker"], negative_markers=["not found", "404"],
                 note="India-specific entertainment profile"))
             tasks.append(check_profile_by_markers(
-                client, "MX TakaTak", f"https://www.mxtakatak.com/profile/{username}", username,
+                client, "MX TakaTak", f"https://www.mxtakatak.com/profile/{platform_usernames['MX TakaTak']}", platform_usernames['MX TakaTak'],
                 positive_markers=["mxtakatak", "mx takatak"], negative_markers=["not found", "404"],
                 note="Indian short-video profile"))
             tasks.append(check_profile_by_markers(
-                client, "Roposo", f"https://www.roposo.com/profile/{username}", username,
+                client, "Roposo", f"https://www.roposo.com/profile/{platform_usernames['Roposo']}", platform_usernames['Roposo'],
                 positive_markers=["roposo"], negative_markers=["not found", "404"],
                 note="Indian short-video profile"))
 

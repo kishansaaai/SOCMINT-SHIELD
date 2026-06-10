@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import NetworkGraph from './NetworkGraph';
+import AiChat from './AiChat';
 
 const PLATFORM_ICONS = {
   'GitHub':     '🐙', 'Reddit':     '🤖', 'YouTube':    '📺',
@@ -18,28 +20,72 @@ export default function ResultsDashboard({ results, onReport, caseId }) {
   const [officerName, setOfficerName] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState(null);
+  const [activeTab, setActiveTab] = useState('identities'); // identities, graph, financial
 
-  const found = results.platforms.filter(p => p.found);
-  const notFound = results.platforms.filter(p => !p.found);
+  const found = results.platforms?.filter(p => p.found) || [];
+  const notFound = results.platforms?.filter(p => !p.found) || [];
   const risk = results.risk_score || {};
 
   return (
     <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* AiChat floating widget */}
+      <AiChat profileData={results} />
+
       {/* Stats Bar */}
       <StatsBar results={results} risk={risk} />
 
-      {/* Main grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
-        {/* Left: Platform results */}
+      {/* Tab Navigation */}
+      <div style={{ display: 'flex', gap: 12, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+        <button 
+          className={`font-mono text-xs px-4 py-2 rounded-t-lg transition-colors ${activeTab === 'identities' ? 'bg-[var(--navy2)] text-[var(--gold)] border-b-2 border-[var(--gold)]' : 'text-[var(--text3)] hover:text-[var(--text2)]'}`}
+          onClick={() => setActiveTab('identities')}
+        >
+          IDENTITY MATCHES
+        </button>
+        <button 
+          className={`font-mono text-xs px-4 py-2 rounded-t-lg transition-colors ${activeTab === 'graph' ? 'bg-[var(--navy2)] text-[var(--cyan)] border-b-2 border-[var(--cyan)]' : 'text-[var(--text3)] hover:text-[var(--text2)]'}`}
+          onClick={() => setActiveTab('graph')}
+        >
+          NEXUS GRAPH
+        </button>
+        <button 
+          className={`font-mono text-xs px-4 py-2 rounded-t-lg transition-colors ${activeTab === 'financial' ? 'bg-[var(--navy2)] text-[var(--green)] border-b-2 border-[var(--green)]' : 'text-[var(--text3)] hover:text-[var(--text2)]'}`}
+          onClick={() => setActiveTab('financial')}
+        >
+          FINANCIAL FOOTPRINT
+        </button>
+      </div>
+
+      {/* Main content area */}
+      <div style={{ display: 'grid', gridTemplateColumns: activeTab === 'identities' ? '1fr 340px' : '1fr', gap: 20 }}>
+        
+        {/* LEFT COLUMN OR FULL WIDTH */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <PlatformGrid platforms={found} label="CONFIRMED IDENTITIES" found={true} onSelect={setSelectedPlatform} selected={selectedPlatform} />
-          {notFound.length > 0 && (
-            <PlatformGrid platforms={notFound} label="NOT FOUND" found={false} onSelect={setSelectedPlatform} selected={selectedPlatform} />
+          
+          {activeTab === 'identities' && (
+            <>
+              <PlatformGrid platforms={found} label="CONFIRMED IDENTITIES" found={true} onSelect={setSelectedPlatform} selected={selectedPlatform} />
+              {notFound.length > 0 && (
+                <PlatformGrid platforms={notFound} label="NOT FOUND" found={false} onSelect={setSelectedPlatform} selected={selectedPlatform} />
+              )}
+            </>
           )}
+
+          {activeTab === 'graph' && (
+            <div style={{ height: '600px', width: '100%' }}>
+              <NetworkGraph profileData={results} />
+            </div>
+          )}
+
+          {activeTab === 'financial' && (
+            <FinancialFootprint profileData={results} />
+          )}
+
         </div>
 
-        {/* Right: Risk + Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* RIGHT COLUMN (Only for identities tab) */}
+        {activeTab === 'identities' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <RiskPanel risk={risk} />
           <ActionsPanel
             onGenerateReport={() => setShowReportModal(true)}
@@ -47,7 +93,8 @@ export default function ResultsDashboard({ results, onReport, caseId }) {
             elapsed={results.elapsed_seconds}
           />
           {selectedPlatform && <PlatformDetail platform={selectedPlatform} />}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Report modal */}
@@ -59,6 +106,72 @@ export default function ResultsDashboard({ results, onReport, caseId }) {
           setOfficerName={setOfficerName}
           caseId={caseId}
         />
+      )}
+    </div>
+  );
+}
+
+function FinancialFootprint({ profileData }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchUpi() {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/upi-search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: profileData.query, phone: profileData.phone || null })
+        });
+        const result = await res.json();
+        setData(result);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchUpi();
+  }, [profileData]);
+
+  if (loading) return <div className="p-8 text-[var(--green)] font-mono animate-pulse">Tracing Financial Signatures...</div>;
+  if (!data) return <div className="p-8 text-[var(--red)] font-mono">Failed to trace financial footprint.</div>;
+
+  return (
+    <div className="panel" style={{ padding: '24px' }}>
+      <h3 className="text-[var(--green)] font-mono tracking-widest text-sm font-bold mb-4">UPI & VIRTUAL PAYMENT ADDRESSES</h3>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="bg-[var(--navy2)] p-4 rounded border border-[var(--border)]">
+          <div className="text-[var(--text3)] text-xs font-mono mb-1">VPAs GENERATED</div>
+          <div className="text-[var(--text)] text-xl font-bold">{data.searched_vpas}</div>
+        </div>
+        <div className="bg-[var(--navy2)] p-4 rounded border border-[var(--border)]">
+          <div className="text-[var(--text3)] text-xs font-mono mb-1">ACTIVE FOUND</div>
+          <div className="text-[var(--green)] text-xl font-bold">{data.found_active}</div>
+        </div>
+      </div>
+
+      {data.vpas.length > 0 ? (
+        <div className="space-y-3">
+          {data.vpas.map((vpa, i) => (
+            <div key={i} className="flex items-center justify-between p-4 bg-[#0a192f] border border-[var(--border)] rounded">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-[var(--green)]/20 flex items-center justify-center text-[var(--green)]">🏦</div>
+                <div>
+                  <div className="font-mono text-[var(--text)] text-sm">{vpa.vpa}</div>
+                  <div className="font-mono text-[var(--text3)] text-xs">{vpa.provider}</div>
+                </div>
+              </div>
+              <div className={`px-2 py-1 rounded text-xs font-mono ${vpa.risk_indicator === 'High' ? 'bg-red-900/50 text-red-400 border border-red-800' : 'bg-green-900/50 text-green-400 border border-green-800'}`}>
+                {vpa.status}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-[var(--text3)] font-mono text-sm p-4 bg-[var(--navy2)] rounded border border-[var(--border)]">
+          No active financial footprints or UPI IDs linked directly to this identifier were discovered.
+        </div>
       )}
     </div>
   );

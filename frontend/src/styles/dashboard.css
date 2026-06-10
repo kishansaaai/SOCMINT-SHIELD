@@ -1,0 +1,577 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+/* ─── Page atmosphere ─────────────────────────────────────────────── */
+.dash-page {
+  min-height: 100vh;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: #e2e8f0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 202, 183, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 50%, rgba(59, 130, 246, 0.08), transparent),
+    radial-gradient(ellipse 50% 30% at 0% 80%, rgba(99, 202, 183, 0.06), transparent),
+    linear-gradient(165deg, #020c1b 0%, #0a1628 45%, #0d1f3c 100%);
+  position: relative;
+}
+
+.dash-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(rgba(99, 202, 183, 0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  z-index: 0;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 85%);
+}
+
+/* ─── Glass cards ───────────────────────────────────────────────── */
+.glass-card {
+  background: linear-gradient(145deg, rgba(18, 35, 68, 0.72), rgba(10, 22, 42, 0.55));
+  border: 1px solid rgba(99, 202, 183, 0.14);
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(99, 202, 183, 0.28);
+}
+
+.glass-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(99, 202, 183, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.glass-card-accent-top {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-card-accent-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent, #63cab7), transparent);
+  opacity: 0.85;
+}
+
+/* ─── Top bar ───────────────────────────────────────────────────── */
+.dash-topbar {
+  border-bottom: 1px solid rgba(99, 202, 183, 0.12);
+  background: rgba(2, 12, 27, 0.88);
+  backdrop-filter: blur(20px);
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+.dash-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #63cab7, #3b82f6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 4px 20px rgba(99, 202, 183, 0.35);
+}
+
+/* ─── Section headers ───────────────────────────────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(99, 202, 183, 0.1);
+}
+
+.section-header-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 202, 183, 0.1);
+  border: 1px solid rgba(99, 202, 183, 0.2);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.section-header-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #63cab7;
+}
+
+.section-header-sub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* ─── Stat cards ────────────────────────────────────────────────── */
+.stat-card {
+  padding: 20px 22px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  right: -20px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--stat-glow, rgba(99, 202, 183, 0.08));
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+.stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+/* ─── View tabs (segmented control) ─────────────────────────────── */
+.view-tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  border: 1px solid rgba(99, 202, 183, 0.1);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.view-tab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  background: transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.view-tab:hover {
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.view-tab.active {
+  color: #63cab7;
+  background: rgba(99, 202, 183, 0.15);
+  box-shadow: 0 2px 8px rgba(99, 202, 183, 0.15);
+}
+
+.filter-tab-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.filter-tab {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(99, 202, 183, 0.12);
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s ease;
+}
+
+.filter-tab:hover {
+  border-color: rgba(99, 202, 183, 0.25);
+  color: #94a3b8;
+}
+
+.filter-tab.active {
+  color: #63cab7;
+  background: rgba(99, 202, 183, 0.12);
+  border-color: rgba(99, 202, 183, 0.35);
+}
+
+/* ─── Platform cards ────────────────────────────────────────────── */
+.platform-card {
+  padding: 14px 16px;
+  cursor: default;
+}
+
+.platform-card.found {
+  cursor: pointer;
+}
+
+.platform-card.found:hover {
+  border-color: rgba(99, 202, 183, 0.4) !important;
+}
+
+.platform-card.expanded {
+  border-color: rgba(99, 202, 183, 0.5) !important;
+  box-shadow: 0 0 24px rgba(99, 202, 183, 0.12);
+}
+
+.platform-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.platform-badge.found {
+  color: #63cab7;
+  background: rgba(99, 202, 183, 0.12);
+  border: 1px solid rgba(99, 202, 183, 0.25);
+}
+
+.platform-badge.not-found {
+  color: #475569;
+  background: rgba(71, 85, 105, 0.2);
+}
+
+/* ─── Chips & badges ────────────────────────────────────────────── */
+.data-chip {
+  font-size: 10px;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.signal-badge {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 11px;
+  color: #fca5a5;
+}
+
+/* ─── Results hero strip ────────────────────────────────────────── */
+.results-hero {
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.results-query {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.results-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* ─── Recommendation banner ─────────────────────────────────────── */
+.rec-banner {
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(99, 202, 183, 0.06), transparent);
+}
+
+/* ─── Action buttons ────────────────────────────────────────────── */
+.action-btn {
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(99, 202, 183, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  background: rgba(99, 202, 183, 0.08);
+  border-color: rgba(99, 202, 183, 0.35);
+  color: #63cab7;
+}
+
+.action-btn.primary {
+  background: rgba(99, 202, 183, 0.1);
+  border-color: rgba(99, 202, 183, 0.35);
+  color: #63cab7;
+}
+
+/* ─── Search panel ──────────────────────────────────────────────── */
+.search-panel {
+  padding: 28px;
+  margin-bottom: 24px;
+  position: relative;
+  z-index: 10;
+}
+
+.search-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(99, 202, 183, 0.2);
+  border-radius: 12px;
+  padding: 14px 18px;
+  color: #e2e8f0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input:focus {
+  border-color: rgba(99, 202, 183, 0.5);
+  box-shadow: 0 0 0 3px rgba(99, 202, 183, 0.1);
+}
+
+.search-input::placeholder {
+  color: #334155;
+}
+
+.search-btn {
+  padding: 14px 32px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  min-width: 140px;
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+
+.search-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(99, 202, 183, 0.3);
+}
+
+.mode-tab {
+  padding: 7px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(99, 202, 183, 0.12);
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  transition: all 0.2s ease;
+}
+
+.mode-tab:hover {
+  border-color: rgba(99, 202, 183, 0.25);
+  color: #94a3b8;
+}
+
+.mode-tab.active {
+  border-color: var(--mode-accent, #63cab7);
+  background: color-mix(in srgb, var(--mode-accent, #63cab7) 12%, transparent);
+  color: var(--mode-accent, #63cab7);
+}
+
+/* ─── Timeline items ────────────────────────────────────────────── */
+.timeline-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid #63cab7;
+  transition: background 0.2s;
+}
+
+.timeline-item:hover {
+  background: rgba(99, 202, 183, 0.04);
+}
+
+/* ─── Animations ────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes gauge-glow {
+  0%, 100% { filter: drop-shadow(0 0 4px var(--gauge-color, #63cab7)); }
+  50% { filter: drop-shadow(0 0 12px var(--gauge-color, #63cab7)); }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.45s ease both;
+}
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+
+.shimmer-bar {
+  height: 100%;
+  border-radius: 2px;
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.status-dot {
+  animation: pulse-dot 2s infinite;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────── */
+.dash-page ::-webkit-scrollbar { width: 6px; height: 6px; }
+.dash-page ::-webkit-scrollbar-track { background: transparent; }
+.dash-page ::-webkit-scrollbar-thumb {
+  background: rgba(99, 202, 183, 0.25);
+  border-radius: 3px;
+}
+.dash-page ::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 202, 183, 0.4);
+}
+
+/* ─── Risk gauge ────────────────────────────────────────────────── */
+.risk-gauge-wrap {
+  text-align: center;
+}
+
+.risk-gauge-wrap svg {
+  animation: gauge-glow 3s ease-in-out infinite;
+}
+
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+/* ─── NEXUS AI Chat ─────────────────────────────────────────────── */
+.nexus-chat-fab {
+  background: linear-gradient(135deg, #0e7490, #0891b2);
+  box-shadow: 0 0 24px rgba(8, 145, 178, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 10000 !important;
+}
+
+.nexus-chat-fab:hover {
+  background: linear-gradient(135deg, #0891b2, #06b6d4);
+}
+
+.nexus-chat-panel {
+  background: #020c1b;
+  border: 1px solid rgba(99, 202, 183, 0.35);
+  border-radius: 16px;
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(99, 202, 183, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  isolation: isolate;
+  z-index: 10001 !important;
+}
+
+.nexus-chat-header {
+  background: #041225;
+  border-bottom: 1px solid rgba(99, 202, 183, 0.2);
+}
+
+.nexus-chat-messages {
+  background: #030d1a;
+}
+
+.nexus-chat-bubble-user {
+  background: #0c4a6e;
+  color: #f0fdfa;
+  border: 1px solid rgba(99, 202, 183, 0.25);
+}
+
+.nexus-chat-bubble-assistant {
+  background: #0a192f;
+  color: #e2e8f0;
+  border: 1px solid rgba(99, 202, 183, 0.18);
+}
+
+.nexus-chat-input-area {
+  background: #041225;
+  border-top: 1px solid rgba(99, 202, 183, 0.2);
+}
+
+.nexus-chat-input {
+  background: #0a192f;
+  border: 1px solid rgba(99, 202, 183, 0.25);
+  color: #e2e8f0;
+}
+
+.nexus-chat-input::placeholder {
+  color: #64748b;
+}
+
+.nexus-chat-input:focus {
+  border-color: rgba(99, 202, 183, 0.55);
+  box-shadow: 0 0 0 2px rgba(99, 202, 183, 0.12);
+}
+
+.nexus-chat-send {
+  background: #0e7490;
+}
+
+.nexus-chat-send:hover:not(:disabled) {
+  background: #0891b2;
+}

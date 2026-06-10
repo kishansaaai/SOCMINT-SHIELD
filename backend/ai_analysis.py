@@ -144,6 +144,16 @@ def generate_local_chat_fallback(question: str, profile_data: dict, reason: str 
             answer = f"We detected different handles/display names on: {alias_str}. These could indicate attempts at obfuscation or natural variation in user handles."
         else:
             answer = f"The suspect uses consistent display names/handles across all identified platforms."
+    elif any(kw in q_lower for kw in ("news", "article", "media", "report", "mention", "press", "headline")):
+        news = profile_data.get("news_articles", [])
+        if news:
+            bullets = [f"• {a.get('title', 'Untitled')}: {(a.get('snippet') or '')[:120]}" for a in news[:6]]
+            answer = (
+                f"Found {len(news)} news/web mention(s) for '{query}'. Summary:\n"
+                + "\n".join(bullets)
+            )
+        else:
+            answer = f"No news or web mentions were found for suspect '{query}' in open-web intelligence sources."
     else:
         answer = f"As a local analyst fallback: Suspect '{query}' has a risk level of {risk.get('level', 'MINIMAL')}. Found on {len(platforms)} platforms. Please check the 'Workflow' and 'Overview' tabs for complete structured data."
 
@@ -239,14 +249,45 @@ Return ONLY valid JSON with this exact structure:
         return generate_local_fallback_analysis(profile_data, f"Exception: {str(e)}")
 
 
+async def _get_news_articles(profile_data: dict) -> list:
+    """Return cached news articles or fetch them on demand."""
+    news = profile_data.get("news_articles") or []
+    if news:
+        return news
+    query = profile_data.get("query", "")
+    if not query:
+        return []
+    try:
+        from platforms import search_news
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            return await search_news(client, query)
+    except Exception:
+        return []
+
+
+def _format_news_context(news_articles: list) -> str:
+    if not news_articles:
+        return "News & web mentions: none found"
+    lines = []
+    for i, a in enumerate(news_articles[:10], 1):
+        title = a.get("title", "Untitled")
+        snippet = (a.get("snippet") or "")[:180]
+        lines.append(f"{i}. {title} — {snippet}")
+    return f"News & web mentions ({len(news_articles)} articles):\n" + "\n".join(lines)
+
+
 async def run_chat_analysis(question: str, profile_data: dict) -> dict:
     """Answer investigator questions about a suspect profile, with local fallback."""
+    news_articles = await _get_news_articles(profile_data)
+    profile_data = {**profile_data, "news_articles": news_articles}
+
     if not GEMINI_API_KEY:
         return generate_local_chat_fallback(question, profile_data, "GEMINI_API_KEY not configured")
 
     query     = profile_data.get("query", "unknown")
     platforms = [p for p in profile_data.get("platforms", []) if p.get("found")]
     risk      = profile_data.get("risk_score", {})
+    news_ctx  = _format_news_context(news_articles)
 
     context = f"""You are NEXUS — an AI intelligence analyst for Karnataka CID.
 Suspect: {query}
@@ -254,7 +295,9 @@ Risk: {risk.get('score',0)}/100 ({risk.get('level','?')})
 Found on: {', '.join(p['platform'] for p in platforms)}
 Aliases: {', '.join(a['display_name'] for a in profile_data.get('alias_map',[])[:5])}
 Locations: {', '.join(g['location'] for g in profile_data.get('geo_mentions',[])[:5])}
+{news_ctx}
 
+When asked about news, media coverage, or web mentions, summarize the articles above.
 Answer the investigator's question concisely and professionally. Be direct, factual, and helpful."""
 
     try:
