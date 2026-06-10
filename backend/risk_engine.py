@@ -163,6 +163,62 @@ def compute_risk_score(platform_results: list, query: str) -> dict:
     score += india_score
     breakdown["india_specific"] = india_score
 
+    # ------------------------------------------------------------------
+    # Factor 7 — Temporal anomaly detection (0–15 pts)
+    # ------------------------------------------------------------------
+    temporal_score = 0
+    
+    # Extract parsed created_at datetimes
+    creation_dates = []
+    for p in found_platforms:
+        created = p.get("created_at")
+        if created:
+            try:
+                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00").replace("+00:00", ""))
+                creation_dates.append((p["platform"], created_dt, p))
+            except Exception:
+                pass
+
+    # Signal 1: Coordinated account creation (multiple accounts within 30-day window)
+    has_coordinated = False
+    if len(creation_dates) >= 2:
+        for i in range(len(creation_dates)):
+            for j in range(i + 1, len(creation_dates)):
+                diff = abs((creation_dates[i][1] - creation_dates[j][1]).days)
+                if diff <= 30:
+                    has_coordinated = True
+                    signals.append(f"Coordinated account creation: {creation_dates[i][0]} and {creation_dates[j][0]} created within 30 days of each other")
+                    temporal_score += 5
+                    break
+            if has_coordinated:
+                break
+
+    # Signal 2: Dormant account reactivation (>180 days gap)
+    has_dormant_reactivation = False
+    for platform_name, created_dt, p in creation_dates:
+        age_days = (datetime.utcnow() - created_dt).days
+        posts_count = len(p.get("posts") or [])
+        if age_days > 180 and posts_count > 0:
+            has_dormant_reactivation = True
+            signals.append(f"Dormant account reactivation detected on {platform_name} (>180 days gap)")
+            temporal_score += 5
+            break
+
+    # Signal 3: New account with high post volume (<30 days old, ≥3 posts)
+    has_new_active = False
+    for platform_name, created_dt, p in creation_dates:
+        age_days = (datetime.utcnow() - created_dt).days
+        posts_count = len(p.get("posts") or [])
+        if age_days < 30 and posts_count >= 3:
+            has_new_active = True
+            signals.append(f"New account with high post volume on {platform_name} (<30 days old, {posts_count} posts)")
+            temporal_score += 5
+            break
+
+    temporal_score = min(temporal_score, 15)
+    score += temporal_score
+    breakdown["temporal_anomaly"] = temporal_score
+
     score = min(score, 100)
 
     # ------------------------------------------------------------------
