@@ -406,6 +406,35 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
         story.append(Spacer(1, 5 * mm))
 
     # -----------------------------------------------------------------------
+    # LEGAL RECORDS (NEW)
+    # -----------------------------------------------------------------------
+    legal_records = profile_data.get("legal_records") or {}
+    court_cases = legal_records.get("court_cases", [])
+    if court_cases:
+        story.append(section_header("▸  LEGAL RECORDS (Indian Kanoon)"))
+        story.append(Spacer(1, 2 * mm))
+        lr_rows = [["Case Title / Document", "Court / Date", "Link"]]
+        for c in court_cases[:8]:
+            lr_rows.append([
+                c.get("title", "")[:50],
+                f"{c.get('date', '')} ({c.get('category', '').upper()})",
+                c.get("url", "")[:45]
+            ])
+        lrt = Table(lr_rows, colWidths=[65 * mm, 55 * mm, 54 * mm])
+        lrt.setStyle(TableStyle([
+            ("BACKGROUND",  (0, 0), (-1, 0), NAVY),
+            ("TEXTCOLOR",   (0, 0), (-1, 0), WHITE),
+            ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",    (0, 0), (-1, -1), 8),
+            ("GRID",        (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
+            ("PADDING",     (0, 0), (-1, -1), 4),
+        ]))
+        story.append(lrt)
+        story.append(Spacer(1, 5 * mm))
+
+    # -----------------------------------------------------------------------
     # INVESTIGATIVE WORKFLOW NOTES (NEW)
     # -----------------------------------------------------------------------
     story.append(section_header("▸  9.  INVESTIGATIVE WORKFLOW NOTES"))

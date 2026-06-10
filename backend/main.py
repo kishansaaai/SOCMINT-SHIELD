@@ -169,6 +169,14 @@ async def search(req: SearchRequest):
     except Exception:
         pass
 
+    # Legal records check (Indian Kanoon & MCA)
+    legal_records = None
+    if query and not (req.phone or (query.isdigit() and len(query) >= 10)):
+        try:
+            legal_records = await run_legal_search(query)
+        except Exception:
+            pass
+
     elapsed = round(time.time() - start_time, 2)
 
     return {
@@ -185,8 +193,10 @@ async def search(req: SearchRequest):
         "breach_data": breach_data,
         "paste_results": paste_results,
         "news_articles": news_articles,
+        "legal_records": legal_records,
         "timestamp": datetime.utcnow().isoformat(),
     }
+
 
 
 @app.post("/api/report")
@@ -565,12 +575,15 @@ async def evasion_timeline(req: EvasionTimelineRequest):
     geo_mentions = data.get("geo_mentions", [])
     query = data.get("query", "")
 
-    # Fetch legal records if query is available
+    # Fetch legal records (use pre-fetched if available, otherwise fetch)
     kanoon_results = []
-    if query:
+    legal_records = data.get("legal_records")
+    if legal_records and isinstance(legal_records, dict):
+        kanoon_results = legal_records.get("court_cases", [])
+    elif query:
         try:
             kanoon_data = await run_legal_search(query)
-            kanoon_results = kanoon_data.get("results", []) if isinstance(kanoon_data, dict) else []
+            kanoon_results = kanoon_data.get("court_cases", []) if isinstance(kanoon_data, dict) else []
         except Exception:
             pass
 
