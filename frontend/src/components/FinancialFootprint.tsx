@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../config';
+import { API_BASE, getHeaders } from '../config';
 
 export default function FinancialFootprint({ profileData }) {
   const [data, setData] = useState(null);
@@ -11,7 +11,7 @@ export default function FinancialFootprint({ profileData }) {
       try {
         const res = await fetch(`${API_BASE}/api/upi-search`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getHeaders(),
           body: JSON.stringify({ query: profileData.query, phone: profileData.phone || null })
         });
         const result = await res.json();

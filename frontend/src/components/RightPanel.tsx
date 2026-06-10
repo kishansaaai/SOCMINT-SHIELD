@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { PLATFORMS } from '../utils/platformConfig'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_BASE, getHeaders } from '../config'
 
 const panel = { background:'rgba(2,8,23,0.9)', border:'1px solid rgba(0,255,255,0.22)', backdropFilter:'blur(14px)', borderRadius:3 }
 
@@ -24,7 +24,7 @@ export default function RightPanel({ results, activePlatforms, isScanning }) {
     if (!results || !officer || !caseId) return
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/api/report`, { method:'POST', headers:{'Content-Type':'application/json'},
+      const res = await fetch(`${API_BASE}/api/report`, { method:'POST', headers:getHeaders(),
         body: JSON.stringify({ profile_data:results, officer_name:officer, case_id:caseId }) })
       const d = await res.json()
       const bytes = Uint8Array.from(atob(d.pdf_base64), c => c.charCodeAt(0))

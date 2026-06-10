@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, User, Bot, Loader2 } from 'lucide-react';
-import { API_BASE, formatApiError } from '../config';
+import { API_BASE, formatApiError, getHeaders } from '../config';
 
 export default function AiChat({ profileData }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -34,7 +34,7 @@ export default function AiChat({ profileData }) {
     try {
       const response = await fetch(`${API_BASE}/api/ai-chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({
           question: userMessage,
           profile_data: profileData

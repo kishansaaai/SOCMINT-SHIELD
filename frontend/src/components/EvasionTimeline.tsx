@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { API_BASE } from "../config";
+import { API_BASE, getHeaders } from "../config";
 
 const PLATFORM_COLORS = {
   GitHub: "#2b3137", Reddit: "#ff4500", HackerNews: "#ff6600",
@@ -46,7 +46,7 @@ export default function EvasionTimeline({ profileData }) {
 
     fetch(`${API_BASE}/api/evasion-timeline`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify({ profile_data: profileData }),
     })
       .then((r) => r.json())

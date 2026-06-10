@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { PlatformResult } from '../types'
+import { API_BASE, getHeaders } from '../config'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 interface ScanLogEntry {
   ts: string;
@@ -34,7 +34,7 @@ export function useScan() {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify(payload),
       })
       if (!res.ok) {

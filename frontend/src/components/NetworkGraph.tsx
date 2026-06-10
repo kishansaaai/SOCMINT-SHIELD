@@ -3,7 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 // @ts-expect-error - third party lib types may be missing
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
-import { API_BASE } from '../config';
+import { API_BASE, getHeaders } from '../config';
 
 interface NetworkGraphProps {
   profileData: any;
@@ -24,7 +24,7 @@ export default function NetworkGraph({ profileData }: NetworkGraphProps) {
       try {
         const response = await fetch(`${API_BASE}/api/graph`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getHeaders(),
           body: JSON.stringify({ profile_data: profileData }),
         });
         const data = await response.json();

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -22,6 +22,9 @@ from paste_search import search_pastes
 from upi_search import trace_financial_footprint
 from alias_detector import detect_aliases
 from shadow_prober import detect_shadow_accounts
+from auth import require_auth
+from query_log import log_query
+
 
 app = FastAPI(title="SOCMINT Shield API", version="4.0.0")
 
@@ -104,7 +107,7 @@ def health():
 
 
 @app.post("/api/search")
-async def search(req: SearchRequest):
+async def search(req: SearchRequest, request: Request, officer_token: Optional[str] = Depends(require_auth)):
     if not any([req.username, req.real_name, req.phone, req.email]):
         raise HTTPException(status_code=400, detail="At least one identifier required")
 
@@ -178,11 +181,21 @@ async def search(req: SearchRequest):
             pass
 
     elapsed = round(time.time() - start_time, 2)
+    platforms_found_count = sum(1 for p in platform_results if p["found"])
+
+    # Determine query type for logging
+    q_type = "username"
+    if req.phone: q_type = "phone"
+    elif req.email: q_type = "email"
+    elif req.real_name: q_type = "real_name"
+
+    ip_addr = request.client.host if request.client else "unknown"
+    log_query(officer_token, query, q_type, ip_addr, platforms_found_count)
 
     return {
         "query": query,
         "elapsed_seconds": elapsed,
-        "platforms_found": sum(1 for p in platform_results if p["found"]),
+        "platforms_found": platforms_found_count,
         "platforms_checked": len(platform_results),
         "risk_score": risk,
         "platforms": platform_results,
@@ -200,7 +213,7 @@ async def search(req: SearchRequest):
 
 
 @app.post("/api/report")
-def generate_report(req: ReportRequest):
+def generate_report(req: ReportRequest, officer_token: Optional[str] = Depends(require_auth)):
     pdf_bytes = generate_65b_report(req.profile_data, req.officer_name, req.case_id)
     return {
         "pdf_base64": base64.b64encode(pdf_bytes).decode(),
@@ -209,7 +222,7 @@ def generate_report(req: ReportRequest):
 
 
 @app.post("/api/phone-search")
-async def phone_search(req: PhoneSearchRequest):
+async def phone_search(req: PhoneSearchRequest, officer_token: Optional[str] = Depends(require_auth)):
     if not req.phone or not req.phone.strip():
         raise HTTPException(status_code=400, detail="phone is required")
     result = await phone_intelligence(req.phone.strip(), req.numverify_key or "")
@@ -219,7 +232,7 @@ async def phone_search(req: PhoneSearchRequest):
 
 
 @app.post("/api/identity-search")
-async def identity_search_endpoint(req: IdentitySearchRequest):
+async def identity_search_endpoint(req: IdentitySearchRequest, officer_token: Optional[str] = Depends(require_auth)):
     if not req.full_name.strip() or not req.organization.strip():
         raise HTTPException(status_code=400, detail="full_name and organization are required")
     result = await run_identity_search(
@@ -232,40 +245,40 @@ async def identity_search_endpoint(req: IdentitySearchRequest):
 
 
 @app.post("/api/kanoon-search")
-async def kanoon_search(req: KanoonRequest):
+async def kanoon_search(req: KanoonRequest, officer_token: Optional[str] = Depends(require_auth)):
     if not req.name.strip():
         raise HTTPException(status_code=400, detail="name is required")
     return await run_legal_search(req.name.strip())
 
 
 @app.post("/api/ai-analysis")
-async def ai_analysis(req: AIAnalysisRequest):
+async def ai_analysis(req: AIAnalysisRequest, officer_token: Optional[str] = Depends(require_auth)):
     return await run_nexus_analysis(req.profile_data)
 
 
 @app.post("/api/ai-chat")
-async def ai_chat(req: AIChatRequest):
+async def ai_chat(req: AIChatRequest, officer_token: Optional[str] = Depends(require_auth)):
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="question is required")
     return await run_chat_analysis(req.question.strip(), req.profile_data)
 
 
 @app.post("/api/email-intel")
-async def email_intel(req: EmailIntelRequest):
+async def email_intel(req: EmailIntelRequest, officer_token: Optional[str] = Depends(require_auth)):
     if not req.email.strip():
         raise HTTPException(status_code=400, detail="email is required")
     return await email_intelligence(req.email.strip())
 
 
 @app.post("/api/upi-search")
-async def upi_search(req: UpiSearchRequest):
+async def upi_search(req: UpiSearchRequest, officer_token: Optional[str] = Depends(require_auth)):
     if not req.query.strip() and not req.phone:
         raise HTTPException(status_code=400, detail="query or phone is required")
     return await trace_financial_footprint(req.query.strip(), req.phone)
 
 
 @app.post("/api/news")
-async def get_news(req: NewsRequest):
+async def get_news(req: NewsRequest, officer_token: Optional[str] = Depends(require_auth)):
     import httpx
     if not req.query.strip():
         return []
@@ -274,7 +287,7 @@ async def get_news(req: NewsRequest):
 
 
 @app.post("/api/graph")
-async def build_graph(req: GraphRequest):
+async def build_graph(req: GraphRequest, officer_token: Optional[str] = Depends(require_auth)):
     """Convert search results into entity graph nodes and edges."""
     data = req.profile_data
     query = data.get("query", "unknown")
@@ -434,7 +447,7 @@ async def build_graph(req: GraphRequest):
 
 
 @app.post("/api/timeline")
-async def build_timeline(req: TimelineRequest):
+async def build_timeline(req: TimelineRequest, officer_token: Optional[str] = Depends(require_auth)):
     """Extract and sort all temporal events from search results."""
     data = req.profile_data
     platforms = data.get("platforms", [])
@@ -565,7 +578,7 @@ async def build_timeline(req: TimelineRequest):
 
 
 @app.post("/api/evasion-timeline")
-async def evasion_timeline(req: EvasionTimelineRequest):
+async def evasion_timeline(req: EvasionTimelineRequest, officer_token: Optional[str] = Depends(require_auth)):
     """
     Build a chronological evasion timeline by cross-referencing
     account creations, geo mentions, and legal records.
