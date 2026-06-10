@@ -736,7 +736,6 @@ async def evasion_timeline(req: EvasionTimelineRequest, officer_token: Optional[
                 acc_ev["severity"] = "CRITICAL"
 
     # Clean internal keys and sort chronologically
-    import re
     for e in events:
         e.pop("_dt", None)
 
