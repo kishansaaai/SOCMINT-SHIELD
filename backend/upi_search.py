@@ -37,32 +37,33 @@ async def trace_financial_footprint(query: str, phone: str = None) -> dict:
                 vpas.append(f"{clean_query}{s}")
                 
     # Simulate API Check (Normally we would make HTTP requests to a verification endpoint here)
-    await asyncio.sleep(1.5) # Simulate network delay
+    await asyncio.sleep(0.5) # Simulate network delay
     
-    # Deterministic "found" simulation based on string hash so it's consistent for the same query
+    # Process all generated VPAs as UNVERIFIED
     for vpa in vpas:
-        hash_val = sum(ord(c) for c in vpa)
-        if hash_val % 7 == 0: # Arbitrary probability for simulation
-            # Determine probable provider
-            provider = "Unknown"
-            if "paytm" in vpa: provider = "Paytm"
-            elif "ybl" in vpa or "ibl" in vpa or "axl" in vpa: provider = "PhonePe"
-            elif "ok" in vpa: provider = "Google Pay"
-            elif "icici" in vpa: provider = "ICICI Bank"
-            elif "sbi" in vpa: provider = "State Bank of India"
-            elif "upi" in vpa: provider = "BHIM UPI"
-            
-            active_vpas.append({
-                "vpa": vpa,
-                "provider": provider,
-                "status": "Active",
-                "risk_indicator": "High" if "paytm" in vpa and hash_val % 3 == 0 else "Low" # Fake risk indicator
-            })
+        # Determine probable provider
+        provider = "Unknown"
+        if "paytm" in vpa: provider = "Paytm"
+        elif "ybl" in vpa or "ibl" in vpa or "axl" in vpa: provider = "PhonePe"
+        elif "ok" in vpa: provider = "Google Pay"
+        elif "icici" in vpa: provider = "ICICI Bank"
+        elif "sbi" in vpa: provider = "State Bank of India"
+        elif "upi" in vpa: provider = "BHIM UPI"
+        
+        active_vpas.append({
+            "vpa": vpa,
+            "provider": provider,
+            "status": "UNVERIFIED",
+            "verification_note": "Automated verification not possible without gateway keys. Verify using BHIM portal.",
+            "manual_check_url": "https://www.bhimupi.org.in/"
+        })
 
     # Return structured data
     return {
         "searched_vpas": len(vpas),
-        "found_active": len(active_vpas),
+        "found_active": 0, # Since we cannot verify, active count is 0
         "vpas": active_vpas,
+        "ncrp_check_url": "https://www.cybercrime.gov.in/",
         "crypto_wallets": [] # Placeholder for future crypto tracing (e.g. from pastebin data)
     }
+
