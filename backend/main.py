@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 import time
 import base64
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
@@ -19,6 +20,7 @@ from breach_check import check_haveibeenpwned
 from email_intel import email_intelligence
 from paste_search import search_pastes
 from upi_search import trace_financial_footprint
+from alias_detector import detect_aliases
 
 app = FastAPI(title="SOCMINT Shield API", version="4.0.0")
 
@@ -73,6 +75,10 @@ class TimelineRequest(BaseModel):
     profile_data: dict
 
 
+class EvasionTimelineRequest(BaseModel):
+    profile_data: dict
+
+
 class EmailIntelRequest(BaseModel):
     email: str
 
@@ -113,15 +119,8 @@ async def search(req: SearchRequest):
 
     risk = compute_risk_score(platform_results, query)
 
-    # Extract alias map
-    alias_map = []
-    for p in platform_results:
-        if p.get("found") and p.get("display_name"):
-            alias_map.append({
-                "platform": p["platform"],
-                "display_name": p["display_name"],
-                "differs": p["display_name"].lower().strip() != (query or "").lower().strip(),
-            })
+    # Extract alias map via scoring algorithm
+    alias_map = detect_aliases(platform_results, query)
 
     # Extract geo mentions
     geo_mentions = []
@@ -548,3 +547,160 @@ async def build_timeline(req: TimelineRequest):
     }
 
     return {"events": events, "summary": summary}
+
+
+@app.post("/api/evasion-timeline")
+async def evasion_timeline(req: EvasionTimelineRequest):
+    """
+    Build a chronological evasion timeline by cross-referencing
+    account creations, geo mentions, and legal records.
+    """
+    data = req.profile_data
+    platforms = data.get("platforms", [])
+    geo_mentions = data.get("geo_mentions", [])
+    query = data.get("query", "")
+
+    # Fetch legal records if query is available
+    kanoon_results = []
+    if query:
+        try:
+            kanoon_data = await run_legal_search(query)
+            kanoon_results = kanoon_data.get("results", []) if isinstance(kanoon_data, dict) else []
+        except Exception:
+            pass
+
+    events = []
+
+    def _parse_date(d):
+        if not d:
+            return None
+        try:
+            return datetime.fromisoformat(
+                d.replace("Z", "+00:00").replace("+00:00", "")
+            )
+        except Exception:
+            return None
+
+    def _human_date(dt):
+        if not dt:
+            return "Unknown"
+        days = (datetime.utcnow() - dt).days
+        if days < 1:
+            return "Today"
+        if days < 30:
+            return f"{days} days ago"
+        if days < 365:
+            return f"{days // 30} months ago"
+        return f"{days // 365} years ago"
+
+    # ── Account creation events ──
+    for p in platforms:
+        if not p.get("found"):
+            continue
+        created = p.get("created_at")
+        dt = _parse_date(created)
+        location = p.get("location") or ""
+        events.append({
+            "platform": p.get("platform", ""),
+            "date_iso": created or "",
+            "date_human": _human_date(dt),
+            "location": location,
+            "event_type": "account_created",
+            "title": f"Account created on {p.get('platform', '')}",
+            "crimeMatched": None,
+            "severity": None,
+            "_dt": dt,
+        })
+
+    # ── Geo mention events ──
+    for g in geo_mentions:
+        events.append({
+            "platform": g.get("platform", ""),
+            "date_iso": "",
+            "date_human": "Unknown",
+            "location": g.get("location", ""),
+            "event_type": "location_mention",
+            "title": f"Location mentioned on {g.get('platform', '')}: {g.get('location', '')}",
+            "crimeMatched": None,
+            "severity": None,
+            "_dt": None,
+        })
+
+    # ── Post events with dates ──
+    for p in platforms:
+        if not p.get("found"):
+            continue
+        for post in (p.get("posts") or []):
+            post_date = post.get("created_at") or post.get("published_at") or ""
+            dt = _parse_date(post_date)
+            events.append({
+                "platform": p.get("platform", ""),
+                "date_iso": post_date,
+                "date_human": _human_date(dt),
+                "location": "",
+                "event_type": "post",
+                "title": (post.get("title") or post.get("name") or "Untitled")[:100],
+                "crimeMatched": None,
+                "severity": None,
+                "_dt": dt,
+            })
+
+    # ── Cross-reference: geo + account creation within 15 days ──
+    account_events = [e for e in events if e["event_type"] == "account_created" and e["_dt"]]
+    geo_events = [e for e in events if e["event_type"] == "location_mention" and e.get("location")]
+
+    for geo_ev in geo_events:
+        geo_loc = geo_ev["location"].lower()
+        for acc_ev in account_events:
+            if acc_ev["_dt"] and acc_ev.get("location") and geo_loc in acc_ev["location"].lower():
+                geo_ev["crimeMatched"] = {
+                    "type": "proximity_match",
+                    "detail": f"Account on {acc_ev['platform']} created near this location",
+                }
+                geo_ev["severity"] = "WARNING"
+
+    # ── Cross-reference: kanoon legal records ──
+    for k in kanoon_results:
+        crime_title = k.get("title", "")
+        crime_date_str = k.get("date", "")
+        crime_dt = _parse_date(crime_date_str)
+
+        # Extract city-like tokens from the legal record title
+        crime_words = set(re.sub(r'[^a-zA-Z\s]', '', crime_title.lower()).split())
+
+        for acc_ev in account_events:
+            if not acc_ev["_dt"]:
+                continue
+
+            # Check date proximity (within 15 days)
+            date_close = False
+            if crime_dt:
+                date_close = abs((acc_ev["_dt"] - crime_dt).days) <= 15
+
+            # Check location match
+            loc_match = False
+            acc_loc = (acc_ev.get("location") or "").lower()
+            if acc_loc:
+                loc_words = set(acc_loc.split())
+                loc_match = bool(loc_words & crime_words)
+
+            if date_close and loc_match:
+                acc_ev["crimeMatched"] = {
+                    "type": "legal_record",
+                    "title": crime_title[:120],
+                    "date": crime_date_str,
+                }
+                acc_ev["severity"] = "CRITICAL"
+
+    # Clean internal keys and sort chronologically
+    import re
+    for e in events:
+        e.pop("_dt", None)
+
+    def _sort_key(e):
+        dt = _parse_date(e.get("date_iso", ""))
+        return dt or datetime.min
+
+    events.sort(key=_sort_key)
+
+    return {"events": events, "total": len(events)}

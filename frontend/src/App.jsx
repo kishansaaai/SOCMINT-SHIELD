@@ -4,6 +4,7 @@ import GlobeScanner from "./components/GlobeScanner";
 import AiChat from "./components/AiChat";
 import NetworkGraph from "./components/NetworkGraph";
 import FinancialFootprint from "./components/FinancialFootprint";
+import EvasionTimeline from "./components/EvasionTimeline";
 import { API_BASE, formatApiError } from "./config";
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
@@ -1218,6 +1219,7 @@ export default function App() {
                 ["financial", "Financial Footprint"],
                 ["geo", `Geo (${result.geo_mentions?.length||0})`],
                 ["timeline", `Activity (${result.timeline?.length||0})`],
+                ["evasion", "Evasion Timeline"],
                 ["news", "News & Web"]
               ].map(([view, label]) => (
                 <button key={view} onClick={() => setActiveView(view)} className={`view-tab ${activeView === view ? "active" : ""}`}>{label}</button>
@@ -1241,6 +1243,7 @@ export default function App() {
             {activeView === "financial" && <FinancialFootprint profileData={result} />}
             {activeView === "geo"      && <GeoMentions geos={result.geo_mentions} />}
             {activeView === "timeline" && <BehaviouralTimeline timeline={result.timeline} />}
+            {activeView === "evasion"  && <EvasionTimeline profileData={result} />}
             {activeView === "news"     && <NewsPanel query={result.query} preloaded={result.news_articles} />}
 
             <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, marginBottom: 20, border: "1px solid rgba(251,146,60,0.35)", "--accent": T.orange }}>
