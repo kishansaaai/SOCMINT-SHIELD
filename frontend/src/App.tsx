@@ -393,7 +393,7 @@ function ShareModal({ caseId, onClose }) {
   const ref = `SOCMINT/KA→DL/${caseId}`;
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 999,
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 10020,
       display: "flex", alignItems: "center", justifyContent: "center",
     }} onClick={onClose}>
       <div className={cardClass} style={{ padding: 32, maxWidth: 440, width: "90%" }} onClick={e => e.stopPropagation()}>
@@ -1149,7 +1149,7 @@ export default function App() {
 
       <AnimatePresence>
         {showProfileModal && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowProfileModal(false)}>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 10020, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowProfileModal(false)}>
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -1239,7 +1239,7 @@ export default function App() {
               position: "fixed",
               inset: 0,
               background: "transparent",
-              zIndex: 9999,
+              zIndex: 10010,
               display: "flex",
               flexDirection: "column",
               fontFamily: T.ff,
