@@ -140,12 +140,46 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
     story.append(section_header("▸  1.  DATA INTEGRITY VERIFICATION"))
     story.append(Spacer(1, 2 * mm))
 
+    # Trusted timestamping (RFC 3161)
+    tsa_time = None
+    tsa_authority = "N/A"
+    tsa_signature = "N/A"
+    try:
+        import rfc3161ng
+        from pyasn1.codec.der import encoder
+        import base64
+        # Attempt to contact free public TSAs
+        tsa_urls = [
+            "https://freetsa.org/tsr",
+            "http://timestamp.digicert.com",
+            "http://timestamp.sectigo.com"
+        ]
+        for url in tsa_urls:
+            try:
+                rt = rfc3161ng.RemoteTimestamper(url, hashname='sha256')
+                tst = rt(data=data_str.encode(), return_tsr=True)
+                if tst and tst.time_stamp_token:
+                    gen_time_str = str(tst.time_stamp_token.tst_info['genTime'])
+                    parsed_time = datetime.strptime(gen_time_str, "%Y%m%d%H%M%SZ")
+                    tsa_time = parsed_time.strftime("%d %B %Y, %H:%M:%S UTC")
+                    tsa_authority = url
+                    der_bytes = encoder.encode(tst.time_stamp_token)
+                    tsa_signature = base64.b64encode(der_bytes).decode()[:48] + "..."
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
     int_rows = [
         ["Algorithm", "Value"],
         ["SHA-256",    sha256],
         ["MD5",        md5],
         ["Data Size",  f"{data_bytes:,} bytes"],
         ["Collection Timestamp (ISO 8601)", iso],
+        ["Trusted Timestamp (RFC 3161)", tsa_time if tsa_time else "N/A (Offline/Error)"],
+        ["Timestamp Authority", tsa_authority],
+        ["TSA Digital Signature", tsa_signature],
     ]
     it = Table(int_rows, colWidths=[58 * mm, 116 * mm])
     it.setStyle(TableStyle([
@@ -157,7 +191,7 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
         ("GRID",        (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
         ("PADDING",     (0, 0), (-1, -1), 5),
-        ("WORDWRAP",    (1, 1), (1, 2), True),
+        ("WORDWRAP",    (1, 1), (1, -1), True),
     ]))
     story.append(it)
     story.append(Spacer(1, 5 * mm))
@@ -522,8 +556,9 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
         "to the computer in the ordinary course of the said activities and under lawful authority. Sources include "
         "30 social media and India-specific platforms, email intelligence, data breach databases, paste site archives, "
         "and Indian legal databases (Indian Kanoon, MCA21).<br/><br/>"
-        f"(d) The data integrity verification hash (SHA-256: <b>{sha256[:48]}…</b>) confirms that this "
-        f"electronic record has not been altered or tampered with since its collection on <b>{ts}</b>.<br/><br/>"
+        f"(d) The data integrity verification hash (SHA-256: <b>{sha256[:48]}…</b>) "
+        + (f"validated by trusted RFC 3161 timestamp (<b>{tsa_time}</b>) issued by authority <b>{tsa_authority}</b>, " if tsa_time else "")
+        + f"confirms that this electronic record has not been altered or tampered with since its collection on <b>{ts}</b>.<br/><br/>"
         "This certificate is issued pursuant to Section 65B(4) of the Indian Evidence Act, 1872 and "
         "is admissible as primary evidence in courts of law throughout India under Section 65B(1). "
         "Data collection complies with the Digital Personal Data Protection Act, 2023."
