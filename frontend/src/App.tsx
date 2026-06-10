@@ -8,6 +8,7 @@ import FinancialFootprint from "./components/FinancialFootprint";
 import EvasionTimeline from "./components/EvasionTimeline";
 import ShadowAccounts from "./components/ShadowAccounts";
 import WikidataCard from "./components/WikidataCard";
+import PhoneIntelCard from "./components/PhoneIntelCard";
 import { API_BASE, formatApiError, getHeaders } from "./config";
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
@@ -676,188 +677,7 @@ const UPI_APP_COLORS = {
   "Bank of Maharashtra":  "#065f46",
 };
 
-function PhoneResults({ data }) {
-  const [mentionTab, setMentionTab] = useState("all");
-  const [copied, setCopied]         = useState(null);
 
-  const { phone, telecom, upi_ids, mule_patterns, truecaller,
-          nccrp, web_mentions, numverify, risk_score, summary } = data;
-
-  const opStyle  = OP_COLORS[telecom?.operator] || { bg: "rgba(255,255,255,0.05)", border: T.border, text: T.text2 };
-  const riskC    = risk_score?.level === "HIGH" ? T.red : risk_score?.level === "MEDIUM" ? T.amber : T.green;
-  const fraudMentions = (web_mentions || []).filter(m => m.category === "fraud_complaint");
-  const bizMentions   = (web_mentions || []).filter(m => m.category === "business_listing");
-  const genMentions   = (web_mentions || []).filter(m => m.category === "general_mention");
-
-  const displayMentions =
-    mentionTab === "fraud"   ? fraudMentions :
-    mentionTab === "biz"     ? bizMentions :
-    mentionTab === "general" ? genMentions :
-    (web_mentions || []);
-
-  const copyUpi = (id) => {
-    navigator.clipboard.writeText(id);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 1500);
-  };
-
-  const formatted = phone?.e164
-    ? `+91 ${phone.normalized.slice(0,5)} ${phone.normalized.slice(5)}`
-    : phone?.normalized || "";
-
-  return (
-    <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-      {/* SECTION 1 — TELECOM IDENTITY CARD */}
-      <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, border: `1px solid ${opStyle.border}`, "--accent": opStyle.text }}>
-        <SectionHeader icon="📱" title="Telecom Identity" subtitle="Subscriber and operator intelligence" />
-        <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: T.ff, color: T.text, letterSpacing: 2 }}>{formatted}</div>
-            {truecaller?.available && truecaller?.name ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: T.teal }}>{truecaller.name}</span>
-                <span style={{ fontSize: 9, background: "rgba(99,202,183,0.15)", color: T.teal, padding: "2px 8px", borderRadius: 10, border: `1px solid ${T.border}` }}>PUBLIC RECORD</span>
-              </div>
-            ) : (
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 11, color: T.text3 }}>
-                  Subscriber name not available without auth
-                </div>
-                <a href={truecaller?.manual_url} target="_blank" rel="noreferrer"
-                   style={{ fontSize: 10, color: T.teal, textDecoration: "none" }}>
-                  🔍 Check on Truecaller manually →
-                </a>
-                <div style={{ fontSize: 9, color: T.text3, marginTop: 4, lineHeight: 1.5 }}>
-                  For automated lookups: <a href="https://developer.truecaller.com" target="_blank" rel="noreferrer" style={{ color: T.amber, textDecoration: "none" }}>developer.truecaller.com</a> (free tier, 1000/month)
-                </div>
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ background: opStyle.bg, border: `1px solid ${opStyle.border}`, borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: T.text3, marginBottom: 4 }}>OPERATOR</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: opStyle.text }}>{telecom?.operator || "Unknown"}</div>
-            </div>
-            <div className={cardClass} style={{ borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: T.text3, marginBottom: 4 }}>CIRCLE</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{telecom?.circle || "Unknown"}</div>
-            </div>
-            <div className={cardClass} style={{ borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: T.text3, marginBottom: 4 }}>TYPE</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.amber }}>{telecom?.prepaid_likely ? "PREPAID" : "POSTPAID"}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 2 — THREAT INDICATORS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
-        {/* NCCRP */}
-        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": nccrp?.flagged ? T.red : T.green }}>
-          <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 8 }}>NCCRP STATUS</div>
-          {nccrp?.flagged
-            ? <div style={{ fontSize: 22 }}>🔴</div>
-            : nccrp?.available === false
-              ? <div style={{ fontSize: 22 }}>⚪</div>
-              : <div style={{ fontSize: 22 }}>🟢</div>}
-          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 4, color: nccrp?.flagged ? T.red : T.text2 }}>
-            {nccrp?.flagged ? "FLAGGED" : "UNAVAILABLE"}
-          </div>
-          <a href={nccrp?.manual_url} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: T.teal, textDecoration: "none" }}>Check manually →</a>
-        </div>
-        {/* Risk score */}
-        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": riskC }}>
-          <div className="stat-label">Risk Score</div>
-          <div className="stat-value" style={{ color: riskC }}>{risk_score?.score ?? 0}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: riskC }}>{risk_score?.level}</div>
-        </div>
-        {/* Fraud circle */}
-        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": mule_patterns?.high_fraud_circle ? T.red : T.green }}>
-          <div className="stat-label">Fraud Circle</div>
-          <div style={{ fontSize: 22 }}>{mule_patterns?.high_fraud_circle ? "🔴" : "🟢"}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 4, color: mule_patterns?.high_fraud_circle ? T.red : T.green }}>
-            {mule_patterns?.high_fraud_circle ? "HIGH RISK AREA" : "NORMAL"}
-          </div>
-        </div>
-        {/* Web complaints */}
-        <div className={`${cardClass} stat-card glass-card-accent-top`} style={{ padding: 18, textAlign: "center", "--accent": fraudMentions.length > 0 ? T.red : T.green }}>
-          <div className="stat-label">Web Complaints</div>
-          <div className="stat-value" style={{ color: fraudMentions.length > 0 ? T.red : T.green }}>{fraudMentions.length}</div>
-          <div style={{ fontSize: 10, color: T.text2 }}>fraud mentions</div>
-        </div>
-      </div>
-
-      {/* SECTION 3 — UPI IDENTITY MAP */}
-      <div className={cardClass} style={{ padding: 24 }}>
-        <SectionHeader icon="💳" title="Probable Financial Identities" subtitle="Generated from phone number — verify before use" />
-        <div style={{ fontSize: 10, color: T.amber, marginBottom: 14 }}>⚠ For investigator verification only — unconfirmed, generated from phone number</div>
-        {["PhonePe","Google Pay","Paytm","Amazon Pay","BHIM","Freecharge","JioMoney","Airtel Payments Bank","IndusInd Bank","Bank of Maharashtra"].map(app => {
-          const ids = (upi_ids || []).filter(u => u.app === app || u.provider === app);
-          if (!ids.length) return null;
-          const appColor = UPI_APP_COLORS[app] || T.teal;
-          return (
-            <div key={app} style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 10, color: T.text3, marginBottom: 6, fontWeight: 600 }}>{app}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {ids.map((u, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 6, padding: "5px 10px" }}>
-                    <div style={{ width: 18, height: 18, borderRadius: "50%", background: appColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "white", fontWeight: 700, flexShrink: 0 }}>
-                      {app.slice(0,2).toUpperCase()}
-                    </div>
-                    <span style={{ fontSize: 11, color: T.text, fontFamily: T.ff }}>{u.upi_id}</span>
-                    <button onClick={() => copyUpi(u.upi_id)} style={{ background: "none", border: "none", cursor: "pointer", color: copied === u.upi_id ? T.green : T.text3, fontSize: 12, padding: 0 }}>
-                      {copied === u.upi_id ? "✓" : "⎘"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* SECTION 4 — WEB MENTIONS */}
-      {(web_mentions || []).length > 0 && (
-        <div className={cardClass} style={{ padding: 24 }}>
-          <SectionHeader icon="🌐" title="Web Mentions" subtitle="Fraud complaints, business listings, general references" />
-          <div className="filter-tab-bar">
-            {[["all","All"],["fraud","Fraud"],["biz","Business"],["general","General"]].map(([tab, label]) => (
-              <button key={tab} onClick={() => setMentionTab(tab)} className={`filter-tab ${mentionTab === tab ? "active" : ""}`}>{label}</button>
-            ))}
-          </div>
-          {displayMentions.map((m, i) => {
-            const catColor = m.category === "fraud_complaint" ? T.red : m.category === "business_listing" ? T.amber : T.text3;
-            return (
-              <div key={i} style={{ padding: "10px 0", borderBottom: i < displayMentions.length-1 ? `1px solid ${T.border}` : "none" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                  <a href={m.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: T.text, textDecoration: "none", fontWeight: 600, lineHeight: 1.4, flex: 1 }}>{m.title || m.url}</a>
-                  <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, background: `${catColor}18`, border: `1px solid ${catColor}44`, color: catColor, whiteSpace: "nowrap", flexShrink: 0 }}>
-                    {m.category === "fraud_complaint" ? "FRAUD" : m.category === "business_listing" ? "BUSINESS" : "GENERAL"}
-                  </span>
-                </div>
-                {m.snippet && <div style={{ fontSize: 10, color: T.text3, marginTop: 4, lineHeight: 1.5 }}>{m.snippet.slice(0, 140)}</div>}
-                <div style={{ fontSize: 9, color: T.text3, marginTop: 4 }}>{new URL(m.url).hostname}</div>
-              </div>
-            );
-          })}
-          {displayMentions.length === 0 && <div style={{ fontSize: 11, color: T.text3 }}>No mentions in this category.</div>}
-        </div>
-      )}
-
-      {/* SECTION 5 — INVESTIGATOR SUMMARY */}
-      <div className={`${cardClass} rec-banner`} style={{ padding: 24, borderLeft: `3px solid ${riskC}` }}>
-        <SectionHeader icon="📋" title="Investigator Summary" subtitle="Automated risk assessment narrative" />
-        <div style={{ fontSize: 12, color: T.text, lineHeight: 1.8 }}>{summary}</div>
-        {risk_score?.signals?.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-            {risk_score.signals.map((s, i) => <SignalBadge key={i} signal={s} />)}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 
 export default function App() {
@@ -1165,7 +985,7 @@ export default function App() {
 
         {/* PHONE RESULTS */}
         {phoneResult && isPhoneMode && (
-          <div ref={resultsRef}><PhoneResults data={phoneResult} /></div>
+          <div ref={resultsRef}><PhoneIntelCard data={phoneResult} /></div>
         )}
 
         {/* IDENTITY RESULTS */}

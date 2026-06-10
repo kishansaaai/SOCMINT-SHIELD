@@ -571,7 +571,8 @@ async def fetch_truecaller(client: httpx.AsyncClient, phone: str) -> dict:
         "available":  False,
         "name":       None,
         "manual_url": url,
-        "note":       "Truecaller requires login — check manually at truecaller.com",
+        "fallback_url": f"https://duckduckgo.com/?q=%22{phone}%22+name+truecaller+OR+justdial",
+        "note":       "Truecaller requires login — check manually or use search fallback",
     }
 
 
@@ -793,6 +794,10 @@ async def phone_intelligence(phone: str, numverify_key: str = "") -> dict:
         "nccrp":         safe(nccrp,    {"source": "nccrp",      "available": False, "note": "Request failed"}),
         "web_mentions":  safe_list(mentions),
         "numverify":     safe(numverify, {"source": "numverify", "available": False}),
+        "nccrp_check_url": "https://cybercrime.gov.in",
+        "nccrp_note": "National Cyber Crime Reporting Portal (manual verification recommended)",
+        "tafcop_check_url": "https://tafcop.sancharsaathi.gov.in/",
+        "tafcop_note": "TAFCOP Portal for checking registered mobile connections (Sanchar Saathi)",
     }
 
     results["risk_score"] = compute_phone_risk(results)
