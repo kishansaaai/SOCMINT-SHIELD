@@ -5,6 +5,7 @@ import AiChat from "./components/AiChat";
 import NetworkGraph from "./components/NetworkGraph";
 import FinancialFootprint from "./components/FinancialFootprint";
 import EvasionTimeline from "./components/EvasionTimeline";
+import ShadowAccounts from "./components/ShadowAccounts";
 import { API_BASE, formatApiError } from "./config";
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
@@ -1215,6 +1216,7 @@ export default function App() {
               {[
                 ["platforms", `Platforms (${result.platforms.length})`],
                 ["alias", `Alias Map (${result.alias_map?.length||0})`],
+                ["shadow", `Shadow Accounts (${result.shadow_accounts?.length||0})`],
                 ["nexus", "Nexus Graph"],
                 ["financial", "Financial Footprint"],
                 ["geo", `Geo (${result.geo_mentions?.length||0})`],
@@ -1239,6 +1241,7 @@ export default function App() {
               </>
             )}
             {activeView === "alias"    && <AliasMap aliases={result.alias_map} />}
+            {activeView === "shadow"   && <ShadowAccounts profileData={result} />}
             {activeView === "nexus"    && <div className={cardClass} style={{ height: "600px", width: "100%", marginBottom: 24, overflow: "hidden" }}><NetworkGraph profileData={result} /></div>}
             {activeView === "financial" && <FinancialFootprint profileData={result} />}
             {activeView === "geo"      && <GeoMentions geos={result.geo_mentions} />}

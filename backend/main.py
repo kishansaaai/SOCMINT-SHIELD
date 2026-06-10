@@ -21,6 +21,7 @@ from email_intel import email_intelligence
 from paste_search import search_pastes
 from upi_search import trace_financial_footprint
 from alias_detector import detect_aliases
+from shadow_prober import detect_shadow_accounts
 
 app = FastAPI(title="SOCMINT Shield API", version="4.0.0")
 
@@ -122,6 +123,9 @@ async def search(req: SearchRequest):
     # Extract alias map via scoring algorithm
     alias_map = detect_aliases(platform_results, query)
 
+    # Probe for shadow accounts
+    shadow_accounts = detect_shadow_accounts(platform_results, query)
+
     # Extract geo mentions
     geo_mentions = []
     for p in platform_results:
@@ -175,6 +179,7 @@ async def search(req: SearchRequest):
         "risk_score": risk,
         "platforms": platform_results,
         "alias_map": alias_map,
+        "shadow_accounts": shadow_accounts,
         "geo_mentions": geo_mentions,
         "timeline": timeline,
         "breach_data": breach_data,
