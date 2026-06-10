@@ -7,7 +7,8 @@ import NetworkGraph from "./components/NetworkGraph";
 import FinancialFootprint from "./components/FinancialFootprint";
 import EvasionTimeline from "./components/EvasionTimeline";
 import ShadowAccounts from "./components/ShadowAccounts";
-import { API_BASE, formatApiError } from "./config";
+import WikidataCard from "./components/WikidataCard";
+import { API_BASE, formatApiError, getHeaders } from "./config";
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
 const PLATFORM_ICONS = {
@@ -328,9 +329,7 @@ function NewsPanel({ query, preloaded }) {
     setError(null);
     fetch(`${API_BASE}/api/news`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getHeaders(),
       body: JSON.stringify({ query }),
     })
       .then(r => {
@@ -939,7 +938,7 @@ export default function App() {
       setPhoneLoading(true); setPhoneError(null); setPhoneResult(null); setScanStep(0);
       try {
         const res = await fetch(`${API_BASE}/api/phone-search`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST", headers: getHeaders(),
           body: JSON.stringify({ phone: ph }),
         });
         if (!res.ok) { const t = await res.text(); throw new Error(`Server ${res.status}: ${t}`); }
@@ -956,7 +955,7 @@ export default function App() {
     setLoading(true); setError(null); setResult(null); setScanStep(0);
     try {
       const res = await fetch(`${API_BASE}/api/search`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: getHeaders(),
         body: JSON.stringify(payload),
       });
       if (!res.ok) { const t = await res.text(); throw new Error(`Server ${res.status}: ${t}`); }
@@ -978,7 +977,7 @@ export default function App() {
     setIdentityLoading(true); setIdentityError(null); setIdentityResult(null); setScanStep(0);
     try {
       const res = await fetch(`${API_BASE}/api/identity-search`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: getHeaders(),
         body: JSON.stringify(payload),
       });
       if (!res.ok) { const t = await res.text(); throw new Error(`Server ${res.status}: ${t}`); }
@@ -994,7 +993,7 @@ export default function App() {
     setReportLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/report`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: getHeaders(),
         body: JSON.stringify({ profile_data: result, officer_name: reportForm.officer, case_id: reportForm.caseId }),
       });
       const data = await res.json();
@@ -1207,6 +1206,8 @@ export default function App() {
                 {result.risk_score.signals.map((s, i) => <SignalBadge key={i} signal={s} />)}
               </div>
             )}
+
+            {result.wikidata && <WikidataCard wikidata={result.wikidata} />}
 
             <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
               <button className="action-btn" onClick={handleCopyJSON}>📋 Copy JSON</button>

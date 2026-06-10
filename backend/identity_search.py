@@ -605,3 +605,151 @@ def _rank_usernames(usernames: list, full_name: str) -> list:
         return 3
 
     return sorted(usernames, key=priority)
+
+
+async def wikidata_lookup(query: str):
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+    
+    result = {
+        "found": False,
+        "id": None,
+        "label": None,
+        "description": None,
+        "aliases": [],
+        "dob": None,
+        "nationality": None,
+        "occupation": None,
+        "socials": {}
+    }
+    
+    if not query:
+        return result
+        
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            search_url = "https://www.wikidata.org/w/api.php"
+            search_params = {
+                "action": "wbsearchentities",
+                "search": query,
+                "language": "en",
+                "format": "json",
+                "type": "item",
+                "limit": 1
+            }
+            r = await client.get(search_url, params=search_params)
+            if r.status_code != 200:
+                return result
+            
+            search_data = r.json()
+            search_results = search_data.get("search", [])
+            if not search_results:
+                return result
+                
+            q_id = search_results[0].get("id")
+            if not q_id:
+                return result
+                
+            get_params = {
+                "action": "wbgetentities",
+                "ids": q_id,
+                "languages": "en",
+                "format": "json"
+            }
+            r2 = await client.get(search_url, params=get_params)
+            if r2.status_code != 200:
+                return result
+                
+            entity_data = r2.json()
+            entities = entity_data.get("entities", {})
+            entity = entities.get(q_id)
+            if not entity:
+                return result
+                
+            result["found"] = True
+            result["id"] = q_id
+            
+            labels = entity.get("labels", {})
+            descriptions = entity.get("descriptions", {})
+            aliases_dict = entity.get("aliases", {})
+            
+            result["label"] = labels.get("en", {}).get("value")
+            result["description"] = descriptions.get("en", {}).get("value")
+            
+            for alias_entry in aliases_dict.get("en", []):
+                result["aliases"].append(alias_entry.get("value"))
+                
+            claims = entity.get("claims", {})
+            
+            def get_string_claim(prop_id):
+                prop_claims = claims.get(prop_id, [])
+                if prop_claims:
+                    mainsnak = prop_claims[0].get("mainsnak", {})
+                    datavalue = mainsnak.get("datavalue", {})
+                    if datavalue.get("type") == "string":
+                        return datavalue.get("value")
+                return None
+                
+            social_props = {
+                "twitter": "P2002",
+                "instagram": "P2003",
+                "facebook": "P3579",
+                "youtube": "P2397",
+                "tiktok": "P3502",
+                "linkedin": "P6634",
+                "telegram": "P2013",
+            }
+            
+            for key, prop in social_props.items():
+                val = get_string_claim(prop)
+                if val:
+                    result["socials"][key] = val
+                    
+            dob_claims = claims.get("P569", [])
+            if dob_claims:
+                mainsnak = dob_claims[0].get("mainsnak", {})
+                datavalue = mainsnak.get("datavalue", {})
+                if datavalue.get("type") == "time":
+                    time_val = datavalue.get("value", {}).get("time")
+                    if time_val:
+                        dob_str = time_val.lstrip("+").split("T")[0]
+                        result["dob"] = dob_str
+                        
+            resolve_ids = []
+            
+            def get_entity_id_claim(prop_id):
+                prop_claims = claims.get(prop_id, [])
+                if prop_claims:
+                    mainsnak = prop_claims[0].get("mainsnak", {})
+                    datavalue = mainsnak.get("datavalue", {})
+                    if datavalue.get("type") == "wikibase-entityid":
+                        return datavalue.get("value", {}).get("id")
+                return None
+                
+            nat_id = get_entity_id_claim("P27")
+            occ_id = get_entity_id_claim("P106")
+            
+            if nat_id: resolve_ids.append(nat_id)
+            if occ_id: resolve_ids.append(occ_id)
+            
+            if resolve_ids:
+                resolve_params = {
+                    "action": "wbgetentities",
+                    "ids": "|".join(resolve_ids),
+                    "props": "labels",
+                    "languages": "en",
+                    "format": "json"
+                }
+                r3 = await client.get(search_url, params=resolve_params)
+                if r3.status_code == 200:
+                    r3_data = r3.json()
+                    r3_entities = r3_data.get("entities", {})
+                    if nat_id:
+                        result["nationality"] = r3_entities.get(nat_id, {}).get("labels", {}).get("en", {}).get("value")
+                    if occ_id:
+                        result["occupation"] = r3_entities.get(occ_id, {}).get("labels", {}).get("en", {}).get("value")
+                        
+    except Exception as e:
+        logger.error(f"Error resolving Wikidata identity for '{query}': {e}")
+        
+    return result

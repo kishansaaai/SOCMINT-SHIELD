@@ -469,6 +469,48 @@ def generate_65b_report(profile_data: dict, officer_name: str, case_id: str) -> 
         story.append(Spacer(1, 5 * mm))
 
     # -----------------------------------------------------------------------
+    # PUBLIC IDENTITY RECORD (Wikidata) (NEW)
+    # -----------------------------------------------------------------------
+    wikidata = profile_data.get("wikidata") or {}
+    if wikidata.get("found"):
+        story.append(section_header("▸  PUBLIC IDENTITY RECORD (Wikidata)"))
+        story.append(Spacer(1, 2 * mm))
+        
+        wd_details = [
+            ["Attribute", "Value"],
+            ["Entity ID", wikidata.get("id", "")],
+            ["Label / Name", wikidata.get("label", "")],
+            ["Description", wikidata.get("description", "")],
+            ["Date of Birth", wikidata.get("dob", "") or "N/A"],
+            ["Nationality", wikidata.get("nationality", "") or "N/A"],
+            ["Occupation", wikidata.get("occupation", "") or "N/A"],
+        ]
+        
+        aliases_list = ", ".join(wikidata.get("aliases", []))
+        if aliases_list:
+            wd_details.append(["Wikidata Aliases", aliases_list[:120]])
+            
+        socials_dict = wikidata.get("socials", {})
+        if socials_dict:
+            handles = ", ".join(f"{k}: @{v}" for k, v in socials_dict.items())
+            wd_details.append(["Linked Handles", handles[:120]])
+            
+        wdt = Table(wd_details, colWidths=[45 * mm, 129 * mm])
+        wdt.setStyle(TableStyle([
+            ("BACKGROUND",  (0, 0), (-1, 0), NAVY),
+            ("TEXTCOLOR",   (0, 0), (-1, 0), WHITE),
+            ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",    (0, 0), (-1, -1), 8),
+            ("GRID",        (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
+            ("VALIGN",      (0, 0), (-1, -1), "TOP"),
+            ("PADDING",     (0, 0), (-1, -1), 4),
+        ]))
+        story.append(wdt)
+        story.append(Spacer(1, 5 * mm))
+
+    # -----------------------------------------------------------------------
     # INVESTIGATIVE WORKFLOW NOTES (NEW)
     # -----------------------------------------------------------------------
     story.append(section_header("▸  9.  INVESTIGATIVE WORKFLOW NOTES"))

@@ -6,13 +6,14 @@ import time
 import base64
 import re
 from datetime import datetime
+import asyncio
 from dotenv import load_dotenv
 load_dotenv()
 
 from platforms import run_all_platforms, search_news
 from risk_engine import compute_risk_score
 from report_gen import generate_65b_report
-from identity_search import identity_search as run_identity_search
+from identity_search import identity_search as run_identity_search, wikidata_lookup
 from phone_intel import phone_intelligence
 from kanoon import run_legal_search
 from ai_analysis import run_nexus_analysis, run_chat_analysis
@@ -114,12 +115,14 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
     query = req.username or req.real_name or req.phone or req.email
     start_time = time.time()
 
-    platform_results = await run_all_platforms(
+    platform_task = run_all_platforms(
         username=req.username,
         real_name=req.real_name,
         phone=req.phone,
         email=req.email,
     )
+    wikidata_task = wikidata_lookup(query)
+    platform_results, wikidata_res = await asyncio.gather(platform_task, wikidata_task)
 
     risk = compute_risk_score(platform_results, query)
 
@@ -207,6 +210,7 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
         "paste_results": paste_results,
         "news_articles": news_articles,
         "legal_records": legal_records,
+        "wikidata": wikidata_res,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
