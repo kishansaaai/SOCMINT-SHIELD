@@ -104,3 +104,31 @@ The PDF report satisfies Section 65B of the Indian Evidence Act, 1872:
 - Officer certification block with signature line
 - Non-tampering declaration referencing the hash
 - Court-admissible format per Section 65B(4)
+
+---
+
+## Production Hardening Features (v4.0.0 Update)
+
+### 1. API Token Authentication & Audit Logs
+- **Static Bearer Token**: Configured via `SOCMINT_API_KEY` (backend `.env`) and `VITE_API_KEY` (frontend `.env`).
+- **Secure Validation**: Uses constant-time comparison via Python's standard library `secrets.compare_digest()` to prevent timing attacks.
+- **Bypass for Dev**: Dev mode bypass warning triggers if the key is not set.
+- **Audit Logs**: All queries are logged to `query_log.jsonl` (append-only) tracking timestamp, officer token, query term, query type, request IP, and found platform count.
+
+### 2. Trusted RFC 3161 Timestamping
+- **Digital Custody Integrity**: Incorporates trusted timestamp tokens (TST) from public TSAs (e.g. FreeTSA, DigiCert, Sectigo) using `rfc3161ng`.
+- **Verified Timestamp**: Displays the timestamp authority (TSA) name and the GeneralizedTime verified response under the Section 65B Digital Evidence Data Integrity table.
+
+### 3. Wikidata Identity Resolution
+- **Public Figures Registry**: Automates a parallel lookup against Wikidata API for any name searches.
+- **Registry Cards**: Renders occupation, country/citizenship, aliases, and known official social handle links directly in the search results UI if found.
+
+### 4. Advanced Risk Engine: Temporal Anomalies
+- **Factor 7 Integration**: Added temporal anomaly scoring (up to 15 points max):
+  - **Coordinated account creation**: Multiple target profiles created within a 30-day window.
+  - **Dormant account reactivation**: Target profiles created >180 days ago showing active posts.
+  - **New account activity burst**: Profile created within last 30 days containing 3 or more posts.
+
+### 5. Officer Profile Persistence
+- **LocalStorage Storage**: Standardized `OfficerProfile` type with browser-persisted name, badge, and station parameters.
+- **Header Settings**: A dedicated Officer Profile settings drawer in the top-bar allows law enforcement personnel to save their credentials once and automatically pre-fill the signature block in all exported Section 65B PDFs.
