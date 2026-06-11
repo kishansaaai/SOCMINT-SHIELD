@@ -143,7 +143,12 @@ function PlatformCard({ p }) {
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 17 }}>{icon}</span>
-        <span style={{ fontWeight: 700, fontSize: 12, color: found ? T.text : T.text3, letterSpacing: 0.5 }}>{p.platform}</span>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: 12, color: found ? T.text : T.text3, letterSpacing: 0.5 }}>{p.platform}</span>
+          {found && p.linked_via_real_name && (
+            <div style={{ fontSize: 8, color: T.amber, marginTop: 1, letterSpacing: 0.5, fontWeight: 700 }}>🔗 LINKED VIA: {p.linked_via_real_name.toUpperCase()}</div>
+          )}
+        </div>
         <span className={`platform-badge ${found ? "found" : "not-found"}`} style={{ marginLeft: "auto" }}>
           {found ? "✓ FOUND" : "NOT FOUND"}
         </span>

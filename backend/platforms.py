@@ -4,9 +4,22 @@ import httpx
 from typing import Optional
 from datetime import datetime
 from bs4 import BeautifulSoup
+import json
+import re
 
 TIMEOUT = 12
 MOZILLA_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+# Load Sherlock platform database
+SHERLOCK_DATA = {}
+try:
+    sherlock_path = os.path.join(os.path.dirname(__file__), "sherlock_data.json")
+    if os.path.exists(sherlock_path):
+        with open(sherlock_path, "r", encoding="utf-8") as f:
+            SHERLOCK_DATA = json.load(f)
+except Exception as e:
+    print("Warning: Failed to load Sherlock database:", e)
+
 
 ALL_PLATFORM_NAMES = [
     "GitHub", "Reddit", "HackerNews", "Dev.to", "GitLab", "Tumblr",
@@ -644,6 +657,125 @@ async def search_joshmoj(client: httpx.AsyncClient, username: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Sherlock Integration
+# ---------------------------------------------------------------------------
+
+async def check_sherlock_site(client: httpx.AsyncClient, site_name: str, site_data: dict, username: str) -> Optional[dict]:
+    # Check regex if present
+    regex = site_data.get("regexCheck")
+    if regex:
+        try:
+            if not re.match(regex, username):
+                return None
+        except Exception:
+            pass
+
+    # Use urlProbe if present, otherwise url
+    url_template = site_data.get("urlProbe") or site_data.get("url")
+    if not url_template:
+        return None
+
+    async def probe_username(user: str) -> tuple[bool, Optional[httpx.Response]]:
+        url = url_template.replace("{}", user)
+        # Some sites use POST
+        method = site_data.get("request_method", "GET")
+        payload = site_data.get("request_payload")
+        if payload:
+            try:
+                payload_str = json.dumps(payload).replace("{}", user)
+                payload = json.loads(payload_str)
+            except Exception:
+                pass
+
+        headers = site_data.get("headers", {})
+        if "User-Agent" not in headers:
+            headers["User-Agent"] = MOZILLA_UA
+
+        try:
+            if method == "POST":
+                r = await client.post(url, json=payload, headers=headers, timeout=10, follow_redirects=True)
+            else:
+                r = await client.get(url, headers=headers, timeout=10, follow_redirects=True)
+
+            if r.status_code != 200:  # Require exactly 200 OK
+                return False, r
+
+            # Helper to detect CAPTCHA/bot mitigation walls
+            def is_bot_blocked(body_text: str) -> bool:
+                body_lower = body_text.lower()
+                blocked_markers = [
+                    "recaptcha",
+                    "hcaptcha",
+                    "cloudflare-nginx",
+                    "cf-challenge",
+                    "captcha-delivery",
+                    "distilnetworks",
+                    "px-captcha",
+                    "shield.net",
+                    "please enable cookies and reload the page",
+                    "ddos protection",
+                    "robot check",
+                ]
+                return any(marker in body_lower for marker in blocked_markers)
+
+            if is_bot_blocked(r.text):
+                return False, r
+
+            error_type = site_data.get("errorType")
+            found = False
+
+            if error_type == "status_code":
+                found = True
+            elif error_type == "message":
+                error_msg = site_data.get("errorMsg")
+                body_text = r.text
+                if isinstance(error_msg, list):
+                    found = not any(msg in body_text for msg in error_msg)
+                elif isinstance(error_msg, str):
+                    found = error_msg not in body_text
+                else:
+                    found = True
+            elif error_type == "response_url":
+                error_url = site_data.get("errorUrl")
+                if error_url:
+                    error_url = error_url.replace("{}", user)
+                    found = error_url.rstrip("/").lower() not in str(r.url).lower()
+                else:
+                    found = True
+            else:
+                found = True
+
+            return found, r
+        except Exception:
+            return False, None
+
+    # Probe target username
+    found, r = await probe_username(username)
+    
+    # Double check wildcard if found
+    if found:
+        # Probe a random nonexistent username without underscores (to avoid DNS/SSL errors on subdomains)
+        random_user = f"nonexistentuser{os.urandom(4).hex()}"
+        random_found, _ = await probe_username(random_user)
+        if random_found:
+            # If the random user is also "found", this site is a wildcard false positive
+            found = False
+
+    public_url = site_data.get("url", "").replace("{}", username)
+    return {
+        "platform": site_name,
+        "found": found,
+        "url": public_url,
+        "display_name": username if found else None,
+        "bio": None,
+        "location": None,
+        "posts": [],
+        "post_label": "posts",
+        "risk_signals": [],
+        "source": "sherlock",
+    }
+
+# ---------------------------------------------------------------------------
 # Metadata extraction helper
 # ---------------------------------------------------------------------------
 
@@ -1116,6 +1248,13 @@ async def run_all_platforms(
             for plat, user in discovered.items():
                 platform_usernames[plat] = user
 
+        # Track checked platform-username combinations to avoid duplication
+        checked_combos = set()
+        if username:
+            for plat in ALL_PLATFORM_NAMES:
+                user = platform_usernames.get(plat) or username
+                checked_combos.add((plat, user))
+
         tasks = []
 
         if username:
@@ -1192,16 +1331,106 @@ async def run_all_platforms(
 
         tasks.append(search_whatsapp_business(client, phone))
 
+        # --- Sherlock checks ---
+        sem = asyncio.Semaphore(35)
+        async def sem_check_sherlock(site_name, site_data, user):
+            async with sem:
+                return await check_sherlock_site(client, site_name, site_data, user)
+
+        if username and SHERLOCK_DATA:
+            for site, data in SHERLOCK_DATA.items():
+                if site not in ALL_PLATFORM_NAMES:
+                    checked_combos.add((site, username))
+                    tasks.append(sem_check_sherlock(site, data, username))
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         platform_results = []
         for r in results:
-            if isinstance(r, Exception):
+            if isinstance(r, Exception) or not r:
                 continue
             if isinstance(r, dict):
                 # Attach metadata to each found result
                 r["metadata"] = extract_metadata(r)
                 platform_results.append(r)
+
+        # --- RECURSIVE REAL NAME DISCOVERY ---
+        discovered_names = set()
+        if username:
+            for p in platform_results:
+                if p.get("found") and p.get("display_name"):
+                    dn = p["display_name"].strip()
+                    # Filter out names that match the username itself or are just placeholders
+                    if dn and dn.lower() != username.lower() and len(dn) > 2:
+                        if any(c.isalpha() for c in dn):
+                            discovered_names.add(dn)
+
+        # Helper to generate check task dynamically
+        def get_checker_task(p_name, u_name):
+            if p_name == "GitHub": return search_github(client, u_name)
+            if p_name == "Reddit": return search_reddit(client, u_name)
+            if p_name == "HackerNews": return search_hackernews(client, u_name)
+            if p_name == "Dev.to": return search_devto(client, u_name)
+            if p_name == "GitLab": return search_gitlab(client, u_name)
+            if p_name == "Tumblr": return search_tumblr(client, u_name)
+            if p_name == "Twitter/X": return check_profile_exists(client, "Twitter/X", f"https://twitter.com/{u_name}", u_name, "profile_image_url")
+            if p_name == "Instagram": return search_instagram(client, u_name)
+            if p_name == "TikTok": return check_profile_exists(client, "TikTok", f"https://www.tiktok.com/@{u_name}", u_name)
+            if p_name == "LinkedIn": return search_linkedin(client, u_name)
+            if p_name == "Telegram": return check_profile_exists(client, "Telegram", f"https://t.me/{u_name}", u_name, "tgme_page_title")
+            if p_name == "Snapchat": return check_profile_exists(client, "Snapchat", f"https://www.snapchat.com/add/{u_name}", u_name)
+            
+            yt_url = f"https://www.youtube.com/channel/{u_name}" if u_name.startswith("UC") else f"https://www.youtube.com/@{u_name}"
+            if p_name == "YouTube": return check_profile_exists(client, "YouTube", yt_url, u_name, "channelId")
+            if p_name == "Quora": return check_profile_exists(client, "Quora", f"https://www.quora.com/profile/{u_name}", u_name)
+            if p_name == "Pastebin": return check_profile_exists(client, "Pastebin", f"https://pastebin.com/u/{u_name}", u_name)
+            if p_name == "Pinterest": return check_profile_by_markers(client, "Pinterest", f"https://www.pinterest.com/{u_name}/", u_name, ["pinterest_profile_confirmed_marker"], ["page not found", "not found"])
+            if p_name == "Medium": return check_profile_by_markers(client, "Medium", f"https://medium.com/@{u_name}", u_name, ["medium"], ["404", "page not found"])
+            if p_name == "Steam": return check_profile_by_markers(client, "Steam", f"https://steamcommunity.com/id/{u_name}", u_name, ["steam", u_name], ["specified profile could not be found", "error"])
+            if p_name == "Facebook": return search_facebook(client, u_name)
+            if p_name == "ShareChat": return search_sharechat(client, u_name)
+            if p_name == "Koo": return search_koo(client, u_name)
+            if p_name == "Discord": return search_discord(client, u_name)
+            if p_name == "Josh/Moj": return search_joshmoj(client, u_name)
+            if p_name == "Meesho": return check_profile_by_markers(client, "Meesho", f"https://www.meesho.com/{u_name}", u_name, ["meesho"], ["page not found", "not found"])
+            if p_name == "OLX India": return check_profile_by_markers(client, "OLX India", f"https://www.olx.in/profile/{u_name}", u_name, ["olx"], ["not found", "404"])
+            if p_name == "Naukri.com": return check_profile_by_markers(client, "Naukri.com", f"https://www.naukri.com/mnjuser/profile?id={u_name}", u_name, ["naukri"], ["not found", "login"])
+            if p_name == "JioCinema": return check_profile_by_markers(client, "JioCinema", f"https://www.jiocinema.com/profile/{u_name}", u_name, ["jiocinema_profile_confirmed_marker"], ["not found", "404"])
+            if p_name == "MX TakaTak": return check_profile_by_markers(client, "MX TakaTak", f"https://www.mxtakatak.com/profile/{u_name}", u_name, ["mxtakatak", "mx takatak"], ["not found", "404"])
+            if p_name == "Roposo": return check_profile_by_markers(client, "Roposo", f"https://www.roposo.com/profile/{u_name}", u_name, ["roposo"], ["not found", "404"])
+            
+            if SHERLOCK_DATA and p_name in SHERLOCK_DATA:
+                return sem_check_sherlock(p_name, SHERLOCK_DATA[p_name], u_name)
+            return None
+
+        # Execute discovery and platform checks for extracted names
+        if discovered_names:
+            # Query top 2 discovered names to limit resource usage
+            for dn in list(discovered_names)[:2]:
+                discovered_profiles = await discover_real_usernames(client, dn)
+                rec_tasks = []
+                for plat, user in discovered_profiles.items():
+                    if (plat, user) not in checked_combos:
+                        checked_combos.add((plat, user))
+                        t = get_checker_task(plat, user)
+                        if t:
+                            rec_tasks.append((plat, user, t))
+
+                if rec_tasks:
+                    gathered = await asyncio.gather(*(item[2] for item in rec_tasks), return_exceptions=True)
+                    for (plat, user, _), res in zip(rec_tasks, gathered):
+                        if isinstance(res, Exception) or not res:
+                            continue
+                        if isinstance(res, dict) and res.get("found"):
+                            res["metadata"] = extract_metadata(res)
+                            res["linked_via_real_name"] = dn
+                            # Overwrite or append to result list
+                            # If the platform was already in results but not found, we replace it or update it
+                            existing = next((x for x in platform_results if x.get("platform") == plat), None)
+                            if existing:
+                                # Replace the not-found placeholder with the found profile
+                                platform_results.remove(existing)
+                            platform_results.append(res)
 
         seen = {p.get("platform") for p in platform_results}
         for platform_name in ALL_PLATFORM_NAMES:
