@@ -23,11 +23,14 @@ from paste_search import search_pastes
 from upi_search import trace_financial_footprint
 from alias_detector import detect_aliases
 from shadow_prober import detect_shadow_accounts
-from auth import require_auth
+from auth import router as auth_router, cases_router, get_current_officer, User
 from query_log import log_query
+from sentiment_analyzer import analyze_profile_sentiment
 
 
 app = FastAPI(title="SOCMINT Shield API", version="4.0.0")
+app.include_router(auth_router)
+app.include_router(cases_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,7 +113,7 @@ def health():
 
 
 @app.post("/api/search")
-async def search(req: SearchRequest, request: Request, officer_token: Optional[str] = Depends(require_auth)):
+async def search(req: SearchRequest, request: Request, current_officer: User = Depends(get_current_officer)):
     if not any([req.username, req.real_name, req.phone, req.email]):
         raise HTTPException(status_code=400, detail="At least one identifier required")
 
@@ -125,6 +128,19 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
     )
     wikidata_task = wikidata_lookup(query)
     platform_results, wikidata_res = await asyncio.gather(platform_task, wikidata_task)
+
+    # Add reverse image search URLs
+    import urllib.parse
+    for p in platform_results:
+        avatar = p.get("avatar") or p.get("image")
+        if p.get("found") and avatar and str(avatar).startswith("http"):
+            img_url = urllib.parse.quote(avatar, safe="")
+            p["reverse_image_links"] = {
+                "google": f"https://lens.google.com/uploadbyurl?url={img_url}",
+                "tineye": f"https://tineye.com/search?url={img_url}",
+                "yandex": f"https://yandex.com/images/search?rpt=imageview&url={img_url}",
+                "bing": f"https://www.bing.com/images/search?q=imgurl:{img_url}&view=detailv2&iss=sbi"
+            }
 
     risk = compute_risk_score(platform_results, query)
 
@@ -195,7 +211,7 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
     elif req.real_name: q_type = "real_name"
 
     ip_addr = request.client.host if request.client else "unknown"
-    log_query(officer_token, query, q_type, ip_addr, platforms_found_count)
+    log_query(current_officer.badge_id if current_officer else "dev-bypass", query, q_type, ip_addr, platforms_found_count)
 
     return {
         "query": query,
@@ -219,7 +235,7 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
 
 
 @app.post("/api/report")
-def generate_report(req: ReportRequest, officer_token: Optional[str] = Depends(require_auth)):
+def generate_report(req: ReportRequest, current_officer: User = Depends(get_current_officer)):
     pdf_bytes = generate_65b_report(
         req.profile_data,
         req.officer_name,
@@ -234,7 +250,7 @@ def generate_report(req: ReportRequest, officer_token: Optional[str] = Depends(r
 
 
 @app.post("/api/phone-search")
-async def phone_search(req: PhoneSearchRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def phone_search(req: PhoneSearchRequest, current_officer: User = Depends(get_current_officer)):
     if not req.phone or not req.phone.strip():
         raise HTTPException(status_code=400, detail="phone is required")
     result = await phone_intelligence(req.phone.strip(), req.numverify_key or "")
@@ -244,7 +260,7 @@ async def phone_search(req: PhoneSearchRequest, officer_token: Optional[str] = D
 
 
 @app.post("/api/identity-search")
-async def identity_search_endpoint(req: IdentitySearchRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def identity_search_endpoint(req: IdentitySearchRequest, current_officer: User = Depends(get_current_officer)):
     if not req.full_name.strip() or not req.organization.strip():
         raise HTTPException(status_code=400, detail="full_name and organization are required")
     result = await run_identity_search(
@@ -257,40 +273,40 @@ async def identity_search_endpoint(req: IdentitySearchRequest, officer_token: Op
 
 
 @app.post("/api/kanoon-search")
-async def kanoon_search(req: KanoonRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def kanoon_search(req: KanoonRequest, current_officer: User = Depends(get_current_officer)):
     if not req.name.strip():
         raise HTTPException(status_code=400, detail="name is required")
     return await run_legal_search(req.name.strip())
 
 
 @app.post("/api/ai-analysis")
-async def ai_analysis(req: AIAnalysisRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def ai_analysis(req: AIAnalysisRequest, current_officer: User = Depends(get_current_officer)):
     return await run_nexus_analysis(req.profile_data)
 
 
 @app.post("/api/ai-chat")
-async def ai_chat(req: AIChatRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def ai_chat(req: AIChatRequest, current_officer: User = Depends(get_current_officer)):
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="question is required")
     return await run_chat_analysis(req.question.strip(), req.profile_data)
 
 
 @app.post("/api/email-intel")
-async def email_intel(req: EmailIntelRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def email_intel(req: EmailIntelRequest, current_officer: User = Depends(get_current_officer)):
     if not req.email.strip():
         raise HTTPException(status_code=400, detail="email is required")
     return await email_intelligence(req.email.strip())
 
 
 @app.post("/api/upi-search")
-async def upi_search(req: UpiSearchRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def upi_search(req: UpiSearchRequest, current_officer: User = Depends(get_current_officer)):
     if not req.query.strip() and not req.phone:
         raise HTTPException(status_code=400, detail="query or phone is required")
     return await trace_financial_footprint(req.query.strip(), req.phone)
 
 
 @app.post("/api/news")
-async def get_news(req: NewsRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def get_news(req: NewsRequest, current_officer: User = Depends(get_current_officer)):
     import httpx
     if not req.query.strip():
         return []
@@ -299,7 +315,7 @@ async def get_news(req: NewsRequest, officer_token: Optional[str] = Depends(requ
 
 
 @app.post("/api/graph")
-async def build_graph(req: GraphRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def build_graph(req: GraphRequest, current_officer: User = Depends(get_current_officer)):
     """Convert search results into entity graph nodes and edges."""
     data = req.profile_data
     query = data.get("query", "unknown")
@@ -459,7 +475,7 @@ async def build_graph(req: GraphRequest, officer_token: Optional[str] = Depends(
 
 
 @app.post("/api/timeline")
-async def build_timeline(req: TimelineRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def build_timeline(req: TimelineRequest, current_officer: User = Depends(get_current_officer)):
     """Extract and sort all temporal events from search results."""
     data = req.profile_data
     platforms = data.get("platforms", [])
@@ -586,11 +602,56 @@ async def build_timeline(req: TimelineRequest, officer_token: Optional[str] = De
         "last_activity_human": f"{(datetime.utcnow() - latest).days} days ago" if latest else "Unknown",
     }
 
-    return {"events": events, "summary": summary}
+    matrix = [[0]*24 for _ in range(7)]
+    total_timestamped = 0
+    days_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    
+    for e in events:
+        d = e.get("date_iso", "")
+        if d:
+            try:
+                dt = datetime.fromisoformat(d.replace("Z", "+00:00").replace("+00:00", ""))
+                day_idx = dt.weekday()
+                hour = dt.hour
+                matrix[day_idx][hour] += 1
+                total_timestamped += 1
+            except Exception:
+                pass
+
+    hourly_totals = [0] * 24
+    daily_totals = [0] * 7
+    for d in range(7):
+        for h in range(24):
+            val = matrix[d][h]
+            hourly_totals[h] += val
+            daily_totals[d] += val
+
+    peak_hour = 0
+    if sum(hourly_totals) > 0:
+        peak_hour = hourly_totals.index(max(hourly_totals))
+        
+    peak_day_index = 0
+    if sum(daily_totals) > 0:
+        peak_day_index = daily_totals.index(max(daily_totals))
+        
+    active_hours = [h for h, total in enumerate(hourly_totals) if total > 0]
+
+    activity_heatmap = {
+        "matrix": matrix,
+        "peak_hour": peak_hour,
+        "peak_day": days_map[peak_day_index],
+        "peak_day_index": peak_day_index,
+        "hourly_totals": hourly_totals,
+        "daily_totals": daily_totals,
+        "active_hours": active_hours,
+        "total_timestamped": total_timestamped
+    }
+
+    return {"events": events, "summary": summary, "activity_heatmap": activity_heatmap}
 
 
 @app.post("/api/evasion-timeline")
-async def evasion_timeline(req: EvasionTimelineRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def evasion_timeline(req: EvasionTimelineRequest, current_officer: User = Depends(get_current_officer)):
     """
     Build a chronological evasion timeline by cross-referencing
     account creations, geo mentions, and legal records.
@@ -746,3 +807,13 @@ async def evasion_timeline(req: EvasionTimelineRequest, officer_token: Optional[
     events.sort(key=_sort_key)
 
     return {"events": events, "total": len(events)}
+
+class SentimentRequest(BaseModel):
+    profile_data: dict
+
+@app.post("/api/sentiment")
+def get_sentiment_analysis(req: SentimentRequest, current_officer: User = Depends(get_current_officer)):
+    """Analyze the profile data for dominant tone and sentiment signals."""
+    result = analyze_profile_sentiment(req.profile_data)
+    return result
+

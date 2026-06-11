@@ -6,7 +6,10 @@ export const getHeaders = (headers: Record<string, string> = {}) => {
     "Content-Type": "application/json",
     ...headers,
   };
-  if (API_KEY) {
+  const token = localStorage.getItem('socmint_token');
+  if (token) {
+    h["Authorization"] = `Bearer ${token}`;
+  } else if (API_KEY) {
     h["Authorization"] = `Bearer ${API_KEY}`;
   }
   return h;

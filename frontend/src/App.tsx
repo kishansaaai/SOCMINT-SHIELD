@@ -1,12 +1,15 @@
 // @ts-nocheck
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate, Link } from "react-router-dom";
 import GlobeScanner from "./components/GlobeScanner";
 import AiChat from "./components/AiChat";
 import NetworkGraph from "./components/NetworkGraph";
 import FinancialFootprint from "./components/FinancialFootprint";
 import EvasionTimeline from "./components/EvasionTimeline";
 import ShadowAccounts from "./components/ShadowAccounts";
+import ActivityHeatmap from "./components/ActivityHeatmap";
+import SentimentPanel from "./components/SentimentPanel";
 import WikidataCard from "./components/WikidataCard";
 import PhoneIntelCard from "./components/PhoneIntelCard";
 import { API_BASE, formatApiError, getHeaders, getOfficerProfile, saveOfficerProfile } from "./config";
@@ -18,6 +21,7 @@ const PLATFORM_ICONS = {
   HackerNews: "🧡", "Dev.to": "👩‍💻", GitLab: "🦊", Tumblr: "📝",
   Medium: "✍️", Pinterest: "📌", SoundCloud: "🎧", Steam: "🎮",
   Pastebin: "📋", Flickr: "📷", Quora: "❓", Snapchat: "👻",
+  Gravatar: "👤",
 };
 
 const ALL_PLATFORMS = Object.keys(PLATFORM_ICONS);
@@ -123,7 +127,7 @@ function SkeletonCard() {
 }
 
 // ─── Platform Card ────────────────────────────────────────────────────────────
-function PlatformCard({ p }) {
+function PlatformCard({ p, isEmailQuery }) {
   const [expanded, setExpanded] = useState(false);
   const icon  = PLATFORM_ICONS[p.platform] || "🌐";
   const found = p.found;
@@ -144,10 +148,29 @@ function PlatformCard({ p }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 17 }}>{icon}</span>
         <span style={{ fontWeight: 700, fontSize: 12, color: found ? T.text : T.text3, letterSpacing: 0.5 }}>{p.platform}</span>
-        <span className={`platform-badge ${found ? "found" : "not-found"}`} style={{ marginLeft: "auto" }}>
-          {found ? "✓ FOUND" : "NOT FOUND"}
-        </span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          <span className={`platform-badge ${found ? "found" : "not-found"}`}>
+            {found ? "✓ FOUND" : "NOT FOUND"}
+          </span>
+          {found && p.reverse_image_links && (
+            <div className="relative group ml-1" onClick={e => e.stopPropagation()}>
+              <div className="cursor-pointer text-slate-400 hover:text-cyan-400 transition-colors bg-slate-800/50 hover:bg-slate-800 px-1.5 py-0.5 rounded text-xs" title="Reverse Image Search Profile Picture">🔍</div>
+              <div className="absolute right-0 top-full mt-1 w-48 bg-slate-900 border border-cyan-800/50 rounded shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] text-xs py-1">
+                <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-slate-500 border-b border-slate-800 mb-1 font-bold">Reverse Image Search</div>
+                <a href={p.reverse_image_links.google} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 Google Lens</a>
+                <a href={p.reverse_image_links.tineye} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 TinEye</a>
+                <a href={p.reverse_image_links.yandex} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 Yandex</a>
+                <a href={p.reverse_image_links.bing} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 Bing Visual</a>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+      {isEmailQuery && p.email_exists && (
+        <div style={{ fontSize: 10, color: T.green, fontWeight: "600", marginTop: 4, letterSpacing: 0.5 }}>
+          exists
+        </div>
+      )}
       {/* Note for platforms that block automated checks */}
       {!found && p.note && (
         <div style={{ marginTop: 6, fontSize: 9, color: T.amber, lineHeight: 1.4 }}>
@@ -682,6 +705,16 @@ const UPI_APP_COLORS = {
 
 export default function App() {
   const time = useLocalTime();
+  const navigate = useNavigate();
+  const [officer] = useState(() => JSON.parse(localStorage.getItem("socmint_officer") || "{}"));
+  const [showSaveCaseModal, setShowSaveCaseModal] = useState(false);
+  const [availableCases, setAvailableCases] = useState<any[]>([]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("socmint_token");
+    localStorage.removeItem("socmint_officer");
+    navigate("/login");
+  };
 
   const [input, setInput]             = useState({ username: "", real_name: "", phone: "", email: "" });
   const [searchMode, setSearchMode]   = useState("username");
@@ -723,6 +756,36 @@ export default function App() {
       .then((r) => setBackendOnline(r.ok))
       .catch(() => setBackendOnline(false));
   }, []);
+
+
+
+  const fetchCasesForSave = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/cases`, { headers: getHeaders() });
+      if (res.ok) {
+        setAvailableCases(await res.json());
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleSaveToCase = async (targetCaseId: string) => {
+    if (!result) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(targetCaseId)}`, {
+        method: "PUT",
+        headers: getHeaders(),
+        body: JSON.stringify({ profile_data: result })
+      });
+      if (res.ok) {
+        alert("Saved to case successfully!");
+        setShowSaveCaseModal(false);
+      } else {
+        alert("Failed to save to case");
+      }
+    } catch (e) {
+      alert("Error saving: " + e);
+    }
+  };
 
   const isIdentityMode = searchMode === "identity";
   const isPhoneMode    = searchMode === "phone";
@@ -818,6 +881,36 @@ export default function App() {
     finally { setIdentityLoading(false); }
   }, [identityInput]);
 
+  useEffect(() => {
+    const pendingSearch = localStorage.getItem('socmint_pending_search');
+    if (pendingSearch) {
+      const data = JSON.parse(pendingSearch);
+      localStorage.removeItem('socmint_pending_search');
+      
+      if (data.subject_username) {
+        setInput(prev => ({ ...prev, username: data.subject_username }));
+        setSearchMode("username");
+        setTimeout(() => handleSearch(data.subject_username), 500);
+      } else if (data.subject_real_name) {
+        setIdentityInput(prev => ({ ...prev, full_name: data.subject_real_name }));
+        setSearchMode("identity");
+        setTimeout(() => handleIdentitySearch(), 500);
+      }
+    }
+    
+    const loadProfile = localStorage.getItem('socmint_load_profile');
+    if (loadProfile) {
+      const profileData = JSON.parse(loadProfile);
+      localStorage.removeItem('socmint_load_profile');
+      setResult(profileData);
+      
+      const activeCaseId = localStorage.getItem('socmint_active_case_id');
+      if (activeCaseId) {
+        setReportForm(prev => ({ ...prev, caseId: activeCaseId }));
+      }
+    }
+  }, [handleSearch, handleIdentitySearch]);
+
   const handleReport = async () => {
     if (!result || !reportForm.officer || !reportForm.caseId) return;
     setReportLoading(true);
@@ -852,7 +945,22 @@ export default function App() {
   const modeAccent = isIdentityMode ? T.orange : isPhoneMode ? "#22c55e" : T.teal;
 
   return (
-    <div className="dash-page">
+    <div className="flex min-h-screen bg-slate-950 font-sans">
+      {/* Sidebar */}
+      <div className="w-64 bg-slate-900 border-r border-cyan-900 flex flex-col p-4 z-50">
+        <div className="text-xl font-bold tracking-widest text-cyan-300 mb-8 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white">🛡</div>
+          SHIELD
+        </div>
+        <nav className="flex flex-col gap-4">
+          <Link to="/app" className="p-3 bg-cyan-900/30 border border-cyan-500 text-sm tracking-wider rounded font-bold text-cyan-300">🔍 NEW SEARCH</Link>
+          <Link to="/cases" className="p-3 bg-slate-950 border border-slate-800 hover:border-cyan-500 text-sm tracking-wider rounded text-cyan-400 transition-colors">📁 CASES</Link>
+          <div className="p-3 bg-slate-950 border border-slate-800 text-slate-500 text-sm tracking-wider rounded cursor-not-allowed">📊 DASHBOARD</div>
+          <div className="p-3 bg-slate-950 border border-slate-800 text-slate-500 text-sm tracking-wider rounded cursor-not-allowed">📄 REPORTS</div>
+        </nav>
+      </div>
+
+      <div className="dash-page flex-1 overflow-x-hidden relative">
       <style>{`
         * { box-sizing: border-box; }
         @keyframes pulse   { 0%,100%{opacity:.5} 50%{opacity:1} }
@@ -866,7 +974,12 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div className="dash-logo">🛡</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: 3, color: T.teal }}>SOCMINT SHIELD</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: 3, color: T.teal }}>SOCMINT SHIELD</div>
+              <div style={{ fontSize: 10, color: T.text2, background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: 4, fontFamily: T.ff }}>
+                {officer?.badge_id} | {officer?.rank} {officer?.full_name}
+              </div>
+            </div>
             <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1.2, marginTop: 2 }}>Karnataka CID · OSINT Intelligence Platform</div>
           </div>
         </div>
@@ -884,6 +997,9 @@ export default function App() {
           <div className="mono" style={{ fontSize: 10, color: T.teal, background: "rgba(99,202,183,0.08)", padding: "4px 12px", borderRadius: 20, border: `1px solid ${T.border}` }}>CASE: {caseId}</div>
           <button onClick={() => setShowProfileModal(true)} style={{ fontSize: 10, color: T.text, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`, padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontFamily: T.ff, outline: "none" }}>
             ⚙️ Officer Profile
+          </button>
+          <button onClick={handleLogout} style={{ fontSize: 10, color: T.red, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontFamily: T.ff, outline: "none", fontWeight: "bold" }}>
+            LOGOUT
           </button>
         </div>
       </div>
@@ -1063,6 +1179,7 @@ export default function App() {
                 ["geo", `Geo (${result.geo_mentions?.length||0})`],
                 ["timeline", `Activity (${result.timeline?.length||0})`],
                 ["evasion", "Evasion Timeline"],
+                ["sentiment", "Sentiment & Tone"],
                 ["news", "News & Web"]
               ].map(([view, label]) => (
                 <button key={view} onClick={() => setActiveView(view)} className={`view-tab ${activeView === view ? "active" : ""}`}>{label}</button>
@@ -1077,7 +1194,7 @@ export default function App() {
                   ))}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}>
-                  {displayPlatforms.map((p, i) => <PlatformCard key={i} p={p} />)}
+                  {displayPlatforms.map((p, i) => <PlatformCard key={i} p={p} isEmailQuery={result?.query?.includes("@")} />)}
                 </div>
               </>
             )}
@@ -1086,8 +1203,14 @@ export default function App() {
             {activeView === "nexus"    && <div className={cardClass} style={{ height: "600px", width: "100%", marginBottom: 24, overflow: "hidden" }}><NetworkGraph profileData={result} /></div>}
             {activeView === "financial" && <FinancialFootprint profileData={result} />}
             {activeView === "geo"      && <GeoMentions geos={result.geo_mentions} />}
-            {activeView === "timeline" && <BehaviouralTimeline timeline={result.timeline} />}
+            {activeView === "timeline" && (
+              <div className="flex flex-col gap-6">
+                <ActivityHeatmap profileData={result} />
+                <BehaviouralTimeline timeline={result.timeline} />
+              </div>
+            )}
             {activeView === "evasion"  && <EvasionTimeline profileData={result} />}
+            {activeView === "sentiment" && <SentimentPanel profileData={result} />}
             {activeView === "news"     && <NewsPanel query={result.query} preloaded={result.news_articles} />}
 
             <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, marginBottom: 20, border: "1px solid rgba(251,146,60,0.35)", "--accent": T.orange }}>
@@ -1335,6 +1458,49 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Floating SAVE TO CASE Button */}
+      {result && !anyLoading && (
+        <button 
+          onClick={() => { fetchCasesForSave(); setShowSaveCaseModal(true); }}
+          className="fixed bottom-12 right-12 bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-4 rounded-full shadow-[0_0_20px_rgba(0,255,255,0.4)] z-50 font-bold tracking-widest flex items-center gap-3 hover:scale-105 transition-transform"
+        >
+          <span className="text-xl">💾</span> SAVE TO CASE
+        </button>
+      )}
+
+      {/* SAVE TO CASE Modal */}
+      {showSaveCaseModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-cyan-500 shadow-[0_0_30px_rgba(0,255,255,0.2)] p-8 rounded-lg w-full max-w-md">
+            <h2 className="text-xl font-bold tracking-widest text-cyan-300 mb-6 border-b border-cyan-900 pb-4">SAVE INVESTIGATION</h2>
+            <div className="space-y-3 mb-6 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+              {availableCases.length === 0 ? (
+                <div className="text-slate-400 text-sm italic">No open cases found. Create a new one first.</div>
+              ) : (
+                availableCases.map(c => (
+                  <button 
+                    key={c.case_id}
+                    onClick={() => handleSaveToCase(c.case_id)}
+                    className="w-full text-left p-3 border border-slate-700 bg-slate-800 hover:bg-slate-700 hover:border-cyan-500 rounded transition-colors flex justify-between items-center"
+                  >
+                    <div>
+                      <div className="text-cyan-400 font-mono text-xs">{c.case_id}</div>
+                      <div className="text-white text-sm mt-1">{c.title || c.subject_real_name || "Unnamed"}</div>
+                    </div>
+                    <span className="text-slate-400">➔</span>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="flex gap-4 pt-4 border-t border-cyan-900">
+              <button onClick={() => setShowSaveCaseModal(false)} className="px-4 py-2 border border-slate-600 text-slate-400 hover:text-white rounded">CANCEL</button>
+              <button onClick={() => { setShowSaveCaseModal(false); navigate("/cases"); }} className="flex-1 bg-cyan-600/30 border border-cyan-400 text-cyan-300 hover:bg-cyan-500/40 rounded">CREATE NEW CASE</button>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
     </div>
   );
 }
