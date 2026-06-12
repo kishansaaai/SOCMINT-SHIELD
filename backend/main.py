@@ -23,11 +23,14 @@ from paste_search import search_pastes
 from upi_search import trace_financial_footprint
 from alias_detector import detect_aliases
 from shadow_prober import detect_shadow_accounts
-from auth import require_auth
+from auth import get_current_officer, router as auth_router, User
 from query_log import log_query
+from sentiment_analyzer import analyze_sentiment
 
 
 app = FastAPI(title="SOCMINT Shield API", version="4.0.0")
+
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,6 +38,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 class SearchRequest(BaseModel):
@@ -110,7 +114,7 @@ def health():
 
 
 @app.post("/api/search")
-async def search(req: SearchRequest, request: Request, officer_token: Optional[str] = Depends(require_auth)):
+async def search(req: SearchRequest, request: Request, current_officer: User = Depends(get_current_officer)):
     if not any([req.username, req.real_name, req.phone, req.email]):
         raise HTTPException(status_code=400, detail="At least one identifier required")
 
@@ -185,6 +189,18 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
         except Exception:
             pass
 
+    import urllib.parse
+    for p in platform_results:
+        avatar = p.get("avatar")
+        if avatar and isinstance(avatar, str) and avatar.startswith("http"):
+            encoded = urllib.parse.quote(avatar, safe='')
+            p["reverse_image_links"] = {
+                "google": f"https://lens.google.com/uploadbyurl?url={encoded}",
+                "tineye": f"https://tineye.com/search?url={encoded}",
+                "yandex": f"https://yandex.com/images/search?url={encoded}&rpt=imageview",
+                "bing": f"https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:{encoded}"
+            }
+
     elapsed = round(time.time() - start_time, 2)
     platforms_found_count = sum(1 for p in platform_results if p["found"])
 
@@ -195,7 +211,8 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
     elif req.real_name: q_type = "real_name"
 
     ip_addr = request.client.host if request.client else "unknown"
-    log_query(officer_token, query, q_type, ip_addr, platforms_found_count)
+    log_query(current_officer.username, query, q_type, ip_addr, platforms_found_count)
+
 
     return {
         "query": query,
@@ -219,7 +236,7 @@ async def search(req: SearchRequest, request: Request, officer_token: Optional[s
 
 
 @app.post("/api/report")
-def generate_report(req: ReportRequest, officer_token: Optional[str] = Depends(require_auth)):
+def generate_report(req: ReportRequest, current_officer: User = Depends(get_current_officer)):
     pdf_bytes = generate_65b_report(
         req.profile_data,
         req.officer_name,
@@ -234,7 +251,7 @@ def generate_report(req: ReportRequest, officer_token: Optional[str] = Depends(r
 
 
 @app.post("/api/phone-search")
-async def phone_search(req: PhoneSearchRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def phone_search(req: PhoneSearchRequest, current_officer: User = Depends(get_current_officer)):
     if not req.phone or not req.phone.strip():
         raise HTTPException(status_code=400, detail="phone is required")
     result = await phone_intelligence(req.phone.strip(), req.numverify_key or "")
@@ -244,7 +261,7 @@ async def phone_search(req: PhoneSearchRequest, officer_token: Optional[str] = D
 
 
 @app.post("/api/identity-search")
-async def identity_search_endpoint(req: IdentitySearchRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def identity_search_endpoint(req: IdentitySearchRequest, current_officer: User = Depends(get_current_officer)):
     if not req.full_name.strip() or not req.organization.strip():
         raise HTTPException(status_code=400, detail="full_name and organization are required")
     result = await run_identity_search(
@@ -257,40 +274,45 @@ async def identity_search_endpoint(req: IdentitySearchRequest, officer_token: Op
 
 
 @app.post("/api/kanoon-search")
-async def kanoon_search(req: KanoonRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def kanoon_search(req: KanoonRequest, current_officer: User = Depends(get_current_officer)):
     if not req.name.strip():
         raise HTTPException(status_code=400, detail="name is required")
     return await run_legal_search(req.name.strip())
 
 
 @app.post("/api/ai-analysis")
-async def ai_analysis(req: AIAnalysisRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def ai_analysis(req: AIAnalysisRequest, current_officer: User = Depends(get_current_officer)):
     return await run_nexus_analysis(req.profile_data)
 
 
+@app.post("/api/sentiment")
+def get_sentiment(req: AIAnalysisRequest, current_officer: User = Depends(get_current_officer)):
+    return analyze_sentiment(req.profile_data)
+
+
 @app.post("/api/ai-chat")
-async def ai_chat(req: AIChatRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def ai_chat(req: AIChatRequest, current_officer: User = Depends(get_current_officer)):
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="question is required")
     return await run_chat_analysis(req.question.strip(), req.profile_data)
 
 
 @app.post("/api/email-intel")
-async def email_intel(req: EmailIntelRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def email_intel(req: EmailIntelRequest, current_officer: User = Depends(get_current_officer)):
     if not req.email.strip():
         raise HTTPException(status_code=400, detail="email is required")
     return await email_intelligence(req.email.strip())
 
 
 @app.post("/api/upi-search")
-async def upi_search(req: UpiSearchRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def upi_search(req: UpiSearchRequest, current_officer: User = Depends(get_current_officer)):
     if not req.query.strip() and not req.phone:
         raise HTTPException(status_code=400, detail="query or phone is required")
     return await trace_financial_footprint(req.query.strip(), req.phone)
 
 
 @app.post("/api/news")
-async def get_news(req: NewsRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def get_news(req: NewsRequest, current_officer: User = Depends(get_current_officer)):
     import httpx
     if not req.query.strip():
         return []
@@ -299,7 +321,7 @@ async def get_news(req: NewsRequest, officer_token: Optional[str] = Depends(requ
 
 
 @app.post("/api/graph")
-async def build_graph(req: GraphRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def build_graph(req: GraphRequest, current_officer: User = Depends(get_current_officer)):
     """Convert search results into entity graph nodes and edges."""
     data = req.profile_data
     query = data.get("query", "unknown")
@@ -459,7 +481,7 @@ async def build_graph(req: GraphRequest, officer_token: Optional[str] = Depends(
 
 
 @app.post("/api/timeline")
-async def build_timeline(req: TimelineRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def build_timeline(req: TimelineRequest, current_officer: User = Depends(get_current_officer)):
     """Extract and sort all temporal events from search results."""
     data = req.profile_data
     platforms = data.get("platforms", [])
@@ -586,11 +608,71 @@ async def build_timeline(req: TimelineRequest, officer_token: Optional[str] = De
         "last_activity_human": f"{(datetime.utcnow() - latest).days} days ago" if latest else "Unknown",
     }
 
-    return {"events": events, "summary": summary}
+    # Build activity heatmap
+    # matrix: 7x24 array (0=Monday...6=Sunday, 0-23=hour)
+    matrix = [[0 for _ in range(24)] for _ in range(7)]
+    total_timestamped = 0
+    
+    for event in events:
+        d = event.get("date_iso", "")
+        if d:
+            try:
+                # Standardize ISO format
+                d_clean = d.replace("Z", "+00:00").replace("+00:00", "")
+                dt = datetime.fromisoformat(d_clean)
+                weekday = dt.weekday() # 0 = Monday, 6 = Sunday
+                hour = dt.hour # 0 to 23
+                matrix[weekday][hour] += 1
+                total_timestamped += 1
+            except Exception:
+                pass
+                
+    # Calculate totals
+    hourly_totals = [0 for _ in range(24)]
+    daily_totals = [0 for _ in range(7)]
+    for w in range(7):
+        for h in range(24):
+            count = matrix[w][h]
+            hourly_totals[h] += count
+            daily_totals[w] += count
+            
+    # Peak hour
+    peak_hour = 0
+    max_hour_val = -1
+    for h in range(24):
+        if hourly_totals[h] > max_hour_val:
+            max_hour_val = hourly_totals[h]
+            peak_hour = h
+            
+    # Peak day
+    days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    peak_day_index = 0
+    max_day_val = -1
+    for w in range(7):
+        if daily_totals[w] > max_day_val:
+            max_day_val = daily_totals[w]
+            peak_day_index = w
+    peak_day = days_names[peak_day_index] if max_day_val > 0 else "N/A"
+    
+    # Active hours
+    active_hours = [h for h in range(24) if hourly_totals[h] > 0]
+    
+    activity_heatmap = {
+        "matrix": matrix,
+        "peak_hour": peak_hour,
+        "peak_day": peak_day,
+        "peak_day_index": peak_day_index,
+        "hourly_totals": hourly_totals,
+        "daily_totals": daily_totals,
+        "active_hours": active_hours,
+        "total_timestamped": total_timestamped
+    }
+
+    return {"events": events, "summary": summary, "activity_heatmap": activity_heatmap}
 
 
 @app.post("/api/evasion-timeline")
-async def evasion_timeline(req: EvasionTimelineRequest, officer_token: Optional[str] = Depends(require_auth)):
+async def evasion_timeline(req: EvasionTimelineRequest, current_officer: User = Depends(get_current_officer)):
     """
     Build a chronological evasion timeline by cross-referencing
     account creations, geo mentions, and legal records.

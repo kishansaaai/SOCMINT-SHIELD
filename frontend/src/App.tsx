@@ -1,15 +1,19 @@
 // @ts-nocheck
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import GlobeScanner from "./components/GlobeScanner";
 import AiChat from "./components/AiChat";
 import NetworkGraph from "./components/NetworkGraph";
 import FinancialFootprint from "./components/FinancialFootprint";
 import EvasionTimeline from "./components/EvasionTimeline";
+import ActivityHeatmap from "./components/ActivityHeatmap";
+import SentimentPanel from "./components/SentimentPanel";
 import ShadowAccounts from "./components/ShadowAccounts";
 import WikidataCard from "./components/WikidataCard";
 import PhoneIntelCard from "./components/PhoneIntelCard";
 import { API_BASE, formatApiError, getHeaders, getOfficerProfile, saveOfficerProfile } from "./config";
+
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
 const PLATFORM_ICONS = {
@@ -125,6 +129,7 @@ function SkeletonCard() {
 // ─── Platform Card ────────────────────────────────────────────────────────────
 function PlatformCard({ p }) {
   const [expanded, setExpanded] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
   const icon  = PLATFORM_ICONS[p.platform] || "🌐";
   const found = p.found;
   const hasPosts = found && p.posts?.length > 0;
@@ -161,6 +166,133 @@ function PlatformCard({ p }) {
       )}
       {found && (
         <div style={{ marginTop: 8 }}>
+          {/* Avatar and reverse image search */}
+          {p.avatar && p.avatar.startsWith("http") && (
+            <div style={{ position: "relative", width: "42px", height: "42px", marginBottom: "8px", borderRadius: "6px", overflow: "visible" }} onClick={e => e.stopPropagation()}>
+              <img src={p.avatar} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "6px", border: `1px solid ${T.border}` }} />
+              {p.reverse_image_links && (
+                <div style={{ position: "absolute", top: "-4px", right: "-4px", zIndex: 10 }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDropdown(!showDropdown);
+                    }}
+                    title="Reverse image search"
+                    style={{
+                      background: "#020c1b",
+                      border: `1px solid rgba(0, 255, 255, 0.4)`,
+                      color: "#00ffff",
+                      borderRadius: "50%",
+                      width: "16px",
+                      height: "16px",
+                      fontSize: "9px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      padding: 0
+                    }}
+                  >
+                    🔍
+                  </button>
+                  {showDropdown && (
+                    <>
+                      <div 
+                        onClick={(e) => { e.stopPropagation(); setShowDropdown(false); }} 
+                        style={{ position: "fixed", inset: 0, zIndex: 999 }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "18px",
+                          left: "0",
+                          background: "#0a1628",
+                          border: "1px solid #00ffff",
+                          borderRadius: "4px",
+                          padding: "4px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "2px",
+                          zIndex: 1000,
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                          minWidth: "110px"
+                        }}
+                      >
+                        <a
+                          href={p.reverse_image_links.google}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "9px",
+                            color: "#00ffff",
+                            textDecoration: "none",
+                            background: "transparent",
+                            textAlign: "left",
+                            borderRadius: "2px"
+                          }}
+                          className="hover:bg-[#0f1f3d]"
+                        >
+                          🔍 Google Lens
+                        </a>
+                        <a
+                          href={p.reverse_image_links.tineye}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "9px",
+                            color: "#00ffff",
+                            textDecoration: "none",
+                            background: "transparent",
+                            textAlign: "left",
+                            borderRadius: "2px"
+                          }}
+                          className="hover:bg-[#0f1f3d]"
+                        >
+                          🔎 TinEye
+                        </a>
+                        <a
+                          href={p.reverse_image_links.yandex}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "9px",
+                            color: "#00ffff",
+                            textDecoration: "none",
+                            background: "transparent",
+                            textAlign: "left",
+                            borderRadius: "2px"
+                          }}
+                          className="hover:bg-[#0f1f3d]"
+                        >
+                          🌐 Yandex
+                        </a>
+                        <a
+                          href={p.reverse_image_links.bing}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "9px",
+                            color: "#00ffff",
+                            textDecoration: "none",
+                            background: "transparent",
+                            textAlign: "left",
+                            borderRadius: "2px"
+                          }}
+                          className="hover:bg-[#0f1f3d]"
+                        >
+                          🔷 Bing Visual
+                        </a>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {p.display_name && (
             <div style={{ fontSize: 11, color: T.teal, marginBottom: 3 }}>@{p.display_name}</div>
           )}
@@ -686,6 +818,7 @@ const UPI_APP_COLORS = {
 
 
 export default function App() {
+  const navigate = useNavigate();
   const time = useLocalTime();
 
   const [input, setInput]             = useState({ username: "", real_name: "", phone: "", email: "" });
@@ -723,8 +856,183 @@ export default function App() {
   const [backendOnline, setBackendOnline] = useState(null);
   const resultsRef = useRef(null);
 
+  const [timelineData, setTimelineData] = useState(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
   useEffect(() => {
-    fetch(`${API_BASE}/api/health`)
+    if (!result) {
+      setTimelineData(null);
+      return;
+    }
+    setTimelineLoading(true);
+    fetch(`${API_BASE}/api/timeline`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ profile_data: result })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Timeline fetch failed");
+        return res.json();
+      })
+      .then(data => {
+        setTimelineData(data);
+      })
+      .catch(e => console.error(e))
+      .finally(() => setTimelineLoading(false));
+  }, [result]);
+
+  const [sentimentData, setSentimentData] = useState(null);
+  const [sentimentLoading, setSentimentLoading] = useState(false);
+
+  useEffect(() => {
+    if (!result) {
+      setSentimentData(null);
+      return;
+    }
+    setSentimentLoading(true);
+    fetch(`${API_BASE}/api/sentiment`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ profile_data: result })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Sentiment analysis failed");
+        return res.json();
+      })
+      .then(data => {
+        setSentimentData(data);
+      })
+      .catch(e => console.error(e))
+      .finally(() => setSentimentLoading(false));
+  }, [result]);
+
+  const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [newCaseTitle, setNewCaseTitle] = useState("");
+  const [newCasePriority, setNewCasePriority] = useState("LOW");
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [cases, setCases] = useState([]);
+  const location = useLocation();
+
+  const fetchCases = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/cases`, {
+        headers: getHeaders()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCases(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchCases();
+  }, []);
+
+  const handleSaveToCaseSubmit = async () => {
+    setSaveLoading(true);
+    const dataToSave = result || phoneResult || identityResult;
+    try {
+      if (selectedCaseId === "NEW_CASE") {
+        const response = await fetch(`${API_BASE}/api/cases`, {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({
+            title: newCaseTitle,
+            subject_username: input.username || null,
+            subject_email: input.email || null,
+            subject_phone: input.phone || null,
+            subject_real_name: input.real_name || null,
+            priority: newCasePriority,
+            profile_data: dataToSave,
+            notes: ""
+          })
+        });
+        if (!response.ok) throw new Error("Failed to create and save case");
+        const resData = await response.json();
+        alert(`Successfully saved to new case: ${resData.case_id}`);
+      } else {
+        const response = await fetch(`${API_BASE}/api/cases/${selectedCaseId}`, {
+          method: "PUT",
+          headers: getHeaders(),
+          body: JSON.stringify({
+            profile_data: dataToSave
+          })
+        });
+        if (!response.ok) throw new Error("Failed to update case");
+        alert(`Successfully saved to case: ${selectedCaseId}`);
+      }
+      setIsSaveModalOpen(false);
+      setSelectedCaseId("");
+      setNewCaseTitle("");
+      fetchCases();
+    } catch (e: any) {
+      alert("Save failed: " + e.message);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (location.state?.triggerSearch) {
+      const { username, real_name, phone, email } = location.state;
+      setInput({
+        username: username || "",
+        real_name: real_name || "",
+        phone: phone || "",
+        email: email || ""
+      });
+      if (phone) setSearchMode("phone");
+      else if (email) setSearchMode("email");
+      else if (real_name) setSearchMode("real_name");
+      else setSearchMode("username");
+
+      setTimeout(() => {
+        if (phone) {
+          setPhoneLoading(true); setPhoneError(null); setPhoneResult(null); setScanStep(0);
+          fetch(`${API_BASE}/api/phone-search`, {
+            method: "POST", headers: getHeaders(),
+            body: JSON.stringify({ phone }),
+          })
+            .then(res => res.json())
+            .then(data => {
+              setPhoneResult(data);
+              setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+            })
+            .catch(e => setPhoneError(formatApiError(e)))
+            .finally(() => setPhoneLoading(false));
+        } else {
+          setLoading(true); setError(null); setResult(null); setScanStep(0);
+          fetch(`${API_BASE}/api/search`, {
+            method: "POST", headers: getHeaders(),
+            body: JSON.stringify({ username, real_name, phone, email }),
+          })
+            .then(res => res.json())
+            .then(data => {
+              setResult(data);
+              setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+            })
+            .catch(e => setError(formatApiError(e)))
+            .finally(() => setLoading(false));
+        }
+      }, 200);
+      window.history.replaceState({}, document.title);
+    }
+    
+    if (location.state?.loadedProfile) {
+      setResult(location.state.loadedProfile);
+      setSearchMode("username");
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/health`, { headers: getHeaders() })
       .then((r) => setBackendOnline(r.ok))
       .catch(() => setBackendOnline(false));
   }, []);
@@ -857,7 +1165,65 @@ export default function App() {
   const modeAccent = isIdentityMode ? T.orange : isPhoneMode ? "#22c55e" : T.teal;
 
   return (
-    <div className="dash-page">
+    <div className="dash-page flex min-h-screen">
+      {/* Collapsible Sidebar */}
+      <div className={`transition-all duration-300 bg-[#0a1628] border-r border-cyan-950 flex flex-col z-20 ${sidebarOpen ? "w-64" : "w-16"}`}>
+        {/* Sidebar Header */}
+        <div className="p-4 border-b border-cyan-950 flex items-center justify-between overflow-hidden">
+          {sidebarOpen && (
+            <div className="flex items-center space-x-2">
+              <span className="text-cyan-400 font-bold tracking-widest text-sm">SOCMINT SHIELD</span>
+            </div>
+          )}
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-cyan-400 hover:text-cyan-300 ml-auto p-1">
+            {sidebarOpen ? "◀" : "▶"}
+          </button>
+        </div>
+
+        {/* Sidebar Navigation */}
+        <div className="flex-1 py-6 space-y-1 px-2">
+          <Link to="/app" className="flex items-center space-x-3 text-cyan-400 bg-[#0f1f3d] px-3 py-2 rounded transition-colors font-bold">
+            <span>🔍</span>
+            {sidebarOpen && <span className="text-xs uppercase tracking-wider">New Search</span>}
+          </Link>
+          <Link to="/cases" className="flex items-center space-x-3 text-cyan-400/80 hover:text-cyan-400 hover:bg-[#0f1f3d]/50 px-3 py-2 rounded transition-colors font-bold">
+            <span>📁</span>
+            {sidebarOpen && <span className="text-xs uppercase tracking-wider">Cases</span>}
+          </Link>
+
+          {sidebarOpen && (
+            <div className="pt-6 border-t border-cyan-950 mt-6 px-3">
+              <div className="text-[10px] text-cyan-600 tracking-widest uppercase mb-3 font-bold">📊 DASHBOARD SUMMARY</div>
+              <div className="space-y-3">
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#94a3b8]">Total Cases:</span>
+                  <span className="text-cyan-400 font-bold">{cases.length}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#94a3b8]">Open Cases:</span>
+                  <span className="text-green-400 font-bold">{cases.filter(c => c.status === "open").length}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#94a3b8]">High Risk:</span>
+                  <span className="text-red-400 font-bold">{cases.filter(c => c.priority === "HIGH" || c.priority === "CRITICAL").length}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="p-4 border-t border-cyan-950 overflow-hidden">
+          {sidebarOpen && (
+            <div className="text-[9px] text-[#475569] text-center font-mono">
+              SYSTEM v4.0 · APPROVED FOR CID
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col overflow-y-auto relative">
       <style>{`
         * { box-sizing: border-box; }
         @keyframes pulse   { 0%,100%{opacity:.5} 50%{opacity:1} }
@@ -872,7 +1238,9 @@ export default function App() {
           <div className="dash-logo">🛡</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: 3, color: T.teal }}>SOCMINT SHIELD</div>
-            <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1.2, marginTop: 2 }}>Karnataka CID · OSINT Intelligence Platform</div>
+            <div style={{ fontSize: 10, color: T.text2, letterSpacing: 1.2, marginTop: 2 }}>
+              Karnataka CID · Officer: {officerProfile.rank} {officerProfile.name} ({officerProfile.badge})
+            </div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
@@ -888,12 +1256,29 @@ export default function App() {
           <div className="mono" style={{ fontSize: 11, color: T.text3 }}>{time.toUTCString().slice(5, 25)} UTC</div>
           <div className="mono" style={{ fontSize: 10, color: T.teal, background: "rgba(99,202,183,0.08)", padding: "4px 12px", borderRadius: 20, border: `1px solid ${T.border}` }}>CASE: {caseId}</div>
           <button onClick={() => setShowProfileModal(true)} style={{ fontSize: 10, color: T.text, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`, padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontFamily: T.ff, outline: "none" }}>
-            ⚙️ Officer Profile
+            ⚙️ Profile
+          </button>
+          <button onClick={() => {
+            localStorage.removeItem("socmint_token");
+            localStorage.removeItem("officer_profile");
+            navigate("/login");
+          }} style={{ fontSize: 10, color: T.red, background: "rgba(239,68,68,0.08)", border: `1px solid rgba(239,68,68,0.35)`, padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontFamily: T.ff, outline: "none", fontWeight: "bold" }}>
+            LOGOUT
           </button>
         </div>
       </div>
 
-      <div style={{ position: "relative", zIndex: 9990, maxWidth: 1280, margin: "0 auto", padding: "28px 20px" }}>
+      <div style={{
+        position: "relative",
+        zIndex: 9990,
+        maxWidth: 1280,
+        margin: "0 auto",
+        padding: "28px 20px",
+        display: (!result && !identityResult && !phoneResult) ? "flex" : "block",
+        flexDirection: "column",
+        justifyContent: "center",
+        minHeight: (!result && !identityResult && !phoneResult) ? "calc(78vh - 72px)" : "auto"
+      }}>
         {backendOnline === false && (
           <div className={cardClass} style={{
             padding: "14px 18px", marginBottom: 16, border: "1px solid rgba(239,68,68,0.35)",
@@ -1068,6 +1453,7 @@ export default function App() {
                 ["geo", `Geo (${result.geo_mentions?.length||0})`],
                 ["timeline", `Activity (${result.timeline?.length||0})`],
                 ["evasion", "Evasion Timeline"],
+                ["sentiment", "Sentiment & Tone"],
                 ["news", "News & Web"]
               ].map(([view, label]) => (
                 <button key={view} onClick={() => setActiveView(view)} className={`view-tab ${activeView === view ? "active" : ""}`}>{label}</button>
@@ -1093,6 +1479,8 @@ export default function App() {
             {activeView === "geo"      && <GeoMentions geos={result.geo_mentions} />}
             {activeView === "timeline" && <BehaviouralTimeline timeline={result.timeline} />}
             {activeView === "evasion"  && <EvasionTimeline profileData={result} />}
+            {activeView === "evasion"  && timelineData?.activity_heatmap && <ActivityHeatmap data={timelineData.activity_heatmap} />}
+            {activeView === "sentiment" && sentimentData && <SentimentPanel data={sentimentData} />}
             {activeView === "news"     && <NewsPanel query={result.query} preloaded={result.news_articles} />}
 
             <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, marginBottom: 20, border: "1px solid rgba(251,146,60,0.35)", "--accent": T.orange }}>
@@ -1117,11 +1505,11 @@ export default function App() {
         )}
 
         {!result && !identityResult && !phoneResult && !anyLoading && (
-          <div style={{ textAlign: "center", padding: "12px 0", color: T.text3, marginBottom: 10, position: "relative", zIndex: 10 }}>
-            <div style={{ fontSize: 11, letterSpacing: 2, marginBottom: 6, fontWeight: 600, color: T.teal }}>
+          <div style={{ textAlign: "center", padding: "16px 0", color: T.text2, marginBottom: 10, position: "relative", zIndex: 10 }}>
+            <div style={{ fontSize: 12, letterSpacing: 2, marginBottom: 8, fontWeight: 600, color: T.teal }}>
               {isPhoneMode ? "◈ ENTER AN INDIAN PHONE NUMBER FOR INTELLIGENCE ANALYSIS" : isIdentityMode ? "◈ ENTER NAME + ORGANISATION TO FIND SOCIAL PROFILES" : "◈ ENTER A SUSPECT IDENTIFIER TO BEGIN OSINT SWEEP"}
             </div>
-            <div style={{ fontSize: 9, opacity: 0.6 }}>
+            <div style={{ fontSize: 10, color: T.text2, opacity: 0.8 }}>
               {isPhoneMode ? "Telecom circle · UPI identity map · NCCRP check · web mentions · risk scoring" : isIdentityMode ? "Web search + username checks · confidence scoring · 65B PDF" : "20 platforms concurrently · risk scoring · alias detection · 65B PDF"}
             </div>
           </div>
@@ -1340,6 +1728,192 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div> {/* Close Main Content Area */}
+
+      {/* Floating SAVE TO CASE button */}
+      {(result || phoneResult || identityResult) && (
+        <button
+          onClick={() => {
+            fetchCases();
+            setIsSaveModalOpen(true);
+          }}
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            zIndex: 10005,
+            background: "linear-gradient(135deg, #00ffff, #3b82f6)",
+            color: "#020c1b",
+            fontFamily: T.ff,
+            fontWeight: "bold",
+            padding: "12px 24px",
+            borderRadius: "50px",
+            boxShadow: "0 0 15px rgba(0, 255, 255, 0.4)",
+            cursor: "pointer",
+            border: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            fontSize: "11px",
+            letterSpacing: "1px",
+            textTransform: "uppercase"
+          }}
+        >
+          <span>💾</span>
+          <span>Save to Case</span>
+        </button>
+      )}
+
+      {/* SAVE TO CASE MODAL */}
+      {isSaveModalOpen && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.85)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px",
+          zIndex: 10006,
+          backdropFilter: "blur(4px)"
+        }}>
+          <div style={{
+            background: "#0a1628",
+            border: "1px solid rgba(0, 255, 255, 0.3)",
+            borderRadius: "8px",
+            maxWidth: "400px",
+            width: "100%",
+            padding: "24px",
+            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+            fontFamily: T.ff
+          }}>
+            <div style={{ textTransform: "uppercase", textAlign: "center", marginBottom: "16px" }}>
+              <div style={{ fontSize: "14px", fontWeight: "bold", color: T.teal, letterSpacing: "1.5px" }}>💾 Save to Case File</div>
+              <div style={{ height: "1px", background: `linear-gradient(90deg, transparent, ${T.border2}, transparent)`, marginTop: "8px" }}></div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "10px", color: T.teal, letterSpacing: "1px", textTransform: "uppercase", marginBottom: "6px" }}>Select Target Case</label>
+                <select
+                  value={selectedCaseId}
+                  onChange={(e) => setSelectedCaseId(e.target.value)}
+                  style={{
+                    width: "100%",
+                    background: "#020c1b",
+                    border: `1px solid rgba(0, 255, 255, 0.2)`,
+                    borderRadius: "4px",
+                    padding: "8px",
+                    color: T.text,
+                    fontSize: "12px",
+                    outline: "none"
+                  }}
+                >
+                  <option value="">-- Choose Existing Case --</option>
+                  {cases.map((c: any) => (
+                    <option key={c.case_id} value={c.case_id}>
+                      {c.case_id} - {c.title}
+                    </option>
+                  ))}
+                  <option value="NEW_CASE">+ Create New Case...</option>
+                </select>
+              </div>
+
+              {selectedCaseId === "NEW_CASE" && (
+                <>
+                  <div>
+                    <label style={{ display: "block", fontSize: "10px", color: T.teal, letterSpacing: "1px", textTransform: "uppercase", marginBottom: "6px" }}>New Case Title *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newCaseTitle}
+                      onChange={(e) => setNewCaseTitle(e.target.value)}
+                      style={{
+                        width: "100%",
+                        background: "#020c1b",
+                        border: `1px solid rgba(0, 255, 255, 0.2)`,
+                        borderRadius: "4px",
+                        padding: "8px",
+                        color: T.text,
+                        fontSize: "12px",
+                        outline: "none"
+                      }}
+                      placeholder="e.g. Identity Sweep"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "10px", color: T.teal, letterSpacing: "1px", textTransform: "uppercase", marginBottom: "6px" }}>Priority</label>
+                    <select
+                      value={newCasePriority}
+                      onChange={(e) => setNewCasePriority(e.target.value)}
+                      style={{
+                        width: "100%",
+                        background: "#020c1b",
+                        border: `1px solid rgba(0, 255, 255, 0.2)`,
+                        borderRadius: "4px",
+                        padding: "8px",
+                        color: T.text,
+                        fontSize: "12px",
+                        outline: "none"
+                      }}
+                    >
+                      <option value="LOW">LOW</option>
+                      <option value="MEDIUM">MEDIUM</option>
+                      <option value="HIGH">HIGH</option>
+                      <option value="CRITICAL">CRITICAL</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              <div style={{ display: "flex", gap: "12px", marginTop: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSaveModalOpen(false);
+                    setSelectedCaseId("");
+                    setNewCaseTitle("");
+                  }}
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    border: `1px solid rgba(0, 255, 255, 0.3)`,
+                    color: T.teal,
+                    padding: "8px",
+                    borderRadius: "4px",
+                    fontSize: "11px",
+                    textTransform: "uppercase",
+                    fontWeight: "bold",
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveToCaseSubmit}
+                  disabled={saveLoading || (!selectedCaseId) || (selectedCaseId === "NEW_CASE" && !newCaseTitle)}
+                  style={{
+                    flex: 1,
+                    background: "linear-gradient(135deg, #00ffff, #3b82f6)",
+                    color: "#020c1b",
+                    border: "none",
+                    padding: "8px",
+                    borderRadius: "4px",
+                    fontSize: "11px",
+                    textTransform: "uppercase",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    opacity: (saveLoading || (!selectedCaseId) || (selectedCaseId === "NEW_CASE" && !newCaseTitle)) ? 0.45 : 1
+                  }}
+                >
+                  {saveLoading ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

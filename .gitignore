@@ -23,3 +23,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.kiro/
+
+# Local cache & database files
+.vite/
+*.db
+*.jsonl

@@ -75,3 +75,31 @@
 .glitch  { animation: glitch 0.3s ease; }
 .fade-in-up { animation: fadeInUp 0.4s ease both; }
 .scan-pulse  { animation: scanPulse 1.5s infinite; }
+
+/* Direct high-contrast auth styles to bypass Tailwind JIT cache */
+.auth-title {
+  color: #00ffff !important;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+}
+.auth-subtitle {
+  color: rgba(0, 255, 255, 0.8) !important;
+}
+.auth-label {
+  color: rgba(0, 255, 255, 0.85) !important;
+}
+.auth-btn {
+  background-color: #00ffff !important;
+  color: #020c1b !important;
+  font-weight: bold !important;
+}
+.auth-btn:hover {
+  background-color: #33ffff !important;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.4) !important;
+}
+.auth-link {
+  color: rgba(0, 255, 255, 0.6) !important;
+}
+.auth-link:hover {
+  color: #00ffff !important;
+}
+

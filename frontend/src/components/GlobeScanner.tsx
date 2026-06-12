@@ -624,7 +624,7 @@ function SceneContent({ isScanning, scanStep }) {
       {/* Starfield */}
       <Stars radius={100} depth={50} count={4000} factor={3.5} saturation={0.2} fade speed={0.3} />
 
-      <group ref={tiltGroupRef} rotation={[0.32, 0, -0.06]}>
+      <group ref={tiltGroupRef} position={[0, -1.2, 0]} rotation={[0.32, 0, -0.06]}>
         <Suspense fallback={null}>
           <EarthGlobe />
           <NightLights />
@@ -658,10 +658,9 @@ function SceneContent({ isScanning, scanStep }) {
             isScanning={isScanning}
           />
         ))}
+        <DataParticles count={180} />
+        <ScanSweep active={isScanning} />
       </group>
-
-      <DataParticles count={180} />
-      <ScanSweep active={isScanning} />
 
       <EffectComposer multisampling={0}>
         <Bloom
