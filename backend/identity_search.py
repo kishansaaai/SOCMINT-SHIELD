@@ -50,7 +50,7 @@ def build_queries(
 
     # Abbreviation: "PES University" → "PES", "IIT Bombay" → "IIT"
     org_words  = org.split()
-    org_abbrev = "".join(w[0].upper() for w in org_words if w[0].isupper()) or org_words[0]
+    org_abbrev = "".join(w[0].upper() for w in org_words if w[0].isupper()) or (org_words[0] if org_words else "")
     org_short  = org_words[0] if org_words else org
 
     fn  = full_name

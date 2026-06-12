@@ -23,3 +23,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.kiro/
+
+# Local Data / Query Logs
+backend/query_log.jsonl
+backend/cases.json

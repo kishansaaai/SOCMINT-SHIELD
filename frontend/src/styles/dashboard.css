@@ -575,3 +575,210 @@
 .nexus-chat-send:hover:not(:disabled) {
   background: #0891b2;
 }
+
+/* ─── Leaflet Map overrides for dark theme ─────────────────────── */
+.leaflet-container {
+  background: #020c1b !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+
+.leaflet-tile {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #0a1628 !important;
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(99, 202, 183, 0.25) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+}
+
+.leaflet-popup-tip {
+  background: #0a1628 !important;
+}
+
+/* ─── Glow Overrides ────────────────────────────────────────────── */
+.glow-blue {
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+}
+
+.glow-red {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+}
+
+.glow-green {
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+}
+
+.glow-amber {
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
+/* ─── Main View Switched Tabs ───────────────────────────────────── */
+.main-view-bar-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 20px;
+  position: relative;
+  z-index: 9995;
+}
+
+.main-view-bar {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(16px);
+  border-radius: 12px;
+  border: 1px solid rgba(99, 202, 183, 0.15);
+  margin-top: 16px;
+  width: max-content;
+}
+
+.main-view-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #64748b;
+  background: transparent;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+}
+
+.main-view-btn:hover {
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.main-view-btn.active {
+  color: #63cab7;
+  background: rgba(99, 202, 183, 0.15);
+  border: 1px solid rgba(99, 202, 183, 0.25);
+  box-shadow: 0 0 12px rgba(99, 202, 183, 0.15);
+}
+
+/* ─── Glass Panel and view contents ────────────────────────────── */
+.glass-panel {
+  background: linear-gradient(145deg, rgba(18, 35, 68, 0.72), rgba(10, 22, 42, 0.55));
+  border: 1px solid rgba(99, 202, 183, 0.14);
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 24px;
+}
+
+.alert-card {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(99, 202, 183, 0.14);
+  background: rgba(10, 22, 40, 0.45);
+  backdrop-filter: blur(12px);
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.alert-card.unread {
+  border-color: rgba(99, 202, 183, 0.3);
+  background: rgba(10, 22, 40, 0.75);
+}
+
+.alert-card-stripe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.alert-card-stripe.critical {
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+}
+
+.alert-card-stripe.warning {
+  background: #f59e0b;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+}
+
+.alert-card-stripe.info {
+  background: #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+.cases-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.case-card {
+  background: linear-gradient(145deg, rgba(18, 35, 68, 0.72), rgba(10, 22, 42, 0.55));
+  border: 1px solid rgba(99, 202, 183, 0.14);
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 180px;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.case-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(99, 202, 183, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.case-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(99, 202, 183, 0.18);
+  background: rgba(255,255,255,0.05);
+}
+
+.compliance-text {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.7;
+}
+
+.compliance-text p {
+  margin-bottom: 16px;
+}
+
+.compliance-title {
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 1px;
+}
+
+.leaflet-map-grid input {
+  transition: border-color 0.2s;
+}
+.leaflet-map-grid input:focus {
+  border-color: rgba(99, 202, 183, 0.5) !important;
+}

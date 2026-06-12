@@ -1,18 +1,24 @@
 // @ts-nocheck
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate, Link } from "react-router-dom";
 import GlobeScanner from "./components/GlobeScanner";
 import AiChat from "./components/AiChat";
 import NetworkGraph from "./components/NetworkGraph";
 import FinancialFootprint from "./components/FinancialFootprint";
 import EvasionTimeline from "./components/EvasionTimeline";
 import ShadowAccounts from "./components/ShadowAccounts";
-import ActivityHeatmap from "./components/ActivityHeatmap";
-import SentimentPanel from "./components/SentimentPanel";
 import WikidataCard from "./components/WikidataCard";
 import PhoneIntelCard from "./components/PhoneIntelCard";
-import { API_BASE, formatApiError, getHeaders, getOfficerProfile, saveOfficerProfile } from "./config";
+import LocationMap from "./components/LocationMap";
+import CaseManager from "./components/CaseManager";
+import CryptoTraceCard from "./components/CryptoTraceCard";
+import DarkWebMonitor from "./components/DarkWebMonitor";
+import ImageForensicsCard from "./components/ImageForensicsCard";
+import NLPAnalyzer from "./components/NLPAnalyzer";
+import DomainIntelCard from "./components/DomainIntelCard";
+import FaceScanCard from "./components/FaceScanCard";
+import { Search, Bell, FolderOpen, Info, Shield, Clock } from "lucide-react";
+import { API_BASE, API_KEY, formatApiError, getHeaders, getOfficerProfile, saveOfficerProfile } from "./config";
 
 // ─── Platform meta ────────────────────────────────────────────────────────────
 const PLATFORM_ICONS = {
@@ -21,7 +27,6 @@ const PLATFORM_ICONS = {
   HackerNews: "🧡", "Dev.to": "👩‍💻", GitLab: "🦊", Tumblr: "📝",
   Medium: "✍️", Pinterest: "📌", SoundCloud: "🎧", Steam: "🎮",
   Pastebin: "📋", Flickr: "📷", Quora: "❓", Snapchat: "👻",
-  Gravatar: "👤",
 };
 
 const ALL_PLATFORMS = Object.keys(PLATFORM_ICONS);
@@ -127,7 +132,7 @@ function SkeletonCard() {
 }
 
 // ─── Platform Card ────────────────────────────────────────────────────────────
-function PlatformCard({ p, isEmailQuery }) {
+function PlatformCard({ p }) {
   const [expanded, setExpanded] = useState(false);
   const icon  = PLATFORM_ICONS[p.platform] || "🌐";
   const found = p.found;
@@ -148,29 +153,10 @@ function PlatformCard({ p, isEmailQuery }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 17 }}>{icon}</span>
         <span style={{ fontWeight: 700, fontSize: 12, color: found ? T.text : T.text3, letterSpacing: 0.5 }}>{p.platform}</span>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-          <span className={`platform-badge ${found ? "found" : "not-found"}`}>
-            {found ? "✓ FOUND" : "NOT FOUND"}
-          </span>
-          {found && p.reverse_image_links && (
-            <div className="relative group ml-1" onClick={e => e.stopPropagation()}>
-              <div className="cursor-pointer text-slate-400 hover:text-cyan-400 transition-colors bg-slate-800/50 hover:bg-slate-800 px-1.5 py-0.5 rounded text-xs" title="Reverse Image Search Profile Picture">🔍</div>
-              <div className="absolute right-0 top-full mt-1 w-48 bg-slate-900 border border-cyan-800/50 rounded shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] text-xs py-1">
-                <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-slate-500 border-b border-slate-800 mb-1 font-bold">Reverse Image Search</div>
-                <a href={p.reverse_image_links.google} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 Google Lens</a>
-                <a href={p.reverse_image_links.tineye} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 TinEye</a>
-                <a href={p.reverse_image_links.yandex} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 Yandex</a>
-                <a href={p.reverse_image_links.bing} target="_blank" rel="noreferrer" className="block px-3 py-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 no-underline">🔍 Bing Visual</a>
-              </div>
-            </div>
-          )}
-        </div>
+        <span className={`platform-badge ${found ? "found" : "not-found"}`} style={{ marginLeft: "auto" }}>
+          {found ? "✓ FOUND" : "NOT FOUND"}
+        </span>
       </div>
-      {isEmailQuery && p.email_exists && (
-        <div style={{ fontSize: 10, color: T.green, fontWeight: "600", marginTop: 4, letterSpacing: 0.5 }}>
-          exists
-        </div>
-      )}
       {/* Note for platforms that block automated checks */}
       {!found && p.note && (
         <div style={{ marginTop: 6, fontSize: 9, color: T.amber, lineHeight: 1.4 }}>
@@ -705,16 +691,61 @@ const UPI_APP_COLORS = {
 
 export default function App() {
   const time = useLocalTime();
-  const navigate = useNavigate();
-  const [officer] = useState(() => JSON.parse(localStorage.getItem("socmint_officer") || "{}"));
-  const [showSaveCaseModal, setShowSaveCaseModal] = useState(false);
-  const [availableCases, setAvailableCases] = useState<any[]>([]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("socmint_token");
-    localStorage.removeItem("socmint_officer");
-    navigate("/login");
+  const [activeMainView, setActiveMainView] = useState("search");
+  
+  const [recentInvestigations, setRecentInvestigations] = useState(() => {
+    try {
+      const saved = localStorage.getItem("socmint_recent_investigations");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const saveRecentInvestigations = (list) => {
+    setRecentInvestigations(list);
+    try {
+      localStorage.setItem("socmint_recent_investigations", JSON.stringify(list));
+    } catch (e) {}
   };
+
+  const [auditLogs, setAuditLogs] = useState([
+    { id: "1", action: "Officer authorized session started", timestamp: new Date().toLocaleTimeString("en-IN") + " IST" }
+  ]);
+
+  const [alerts, setAlerts] = useState([
+    {
+      id: "a1",
+      type: "critical",
+      title: "@shadowtrader99 deleted Reddit account u/shadow_trader_in",
+      timestamp: "12:15:02 IST",
+      details: "Evidence preservation completed. Raw data block locked with SHA-256 integrity hash.",
+      isRead: false
+    },
+    {
+      id: "a2",
+      type: "warning",
+      title: "Geotag Anomaly Detected for Sneha Kulkarni",
+      timestamp: "11:42:10 IST",
+      details: "Simultaneous check-ins within 2 hours registered across Pune and Bengaluru (12.9716, 77.5946).",
+      isRead: false
+    },
+    {
+      id: "a3",
+      type: "info",
+      title: "MCA21 Registry update for Vikram Rathore",
+      timestamp: "09:45:00 IST",
+      details: "Corporate filing status changed to 'Under Active Auditing' for V.R. Digital Logistics Pvt Ltd.",
+      isRead: true
+    }
+  ]);
+
+  const handleMarkAlertRead = (id) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
+  };
+
+  const unreadAlertCount = alerts.filter(a => !a.isRead).length;
 
   const [input, setInput]             = useState({ username: "", real_name: "", phone: "", email: "" });
   const [searchMode, setSearchMode]   = useState("username");
@@ -757,38 +788,9 @@ export default function App() {
       .catch(() => setBackendOnline(false));
   }, []);
 
-
-
-  const fetchCasesForSave = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/cases`, { headers: getHeaders() });
-      if (res.ok) {
-        setAvailableCases(await res.json());
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleSaveToCase = async (targetCaseId: string) => {
-    if (!result) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(targetCaseId)}`, {
-        method: "PUT",
-        headers: getHeaders(),
-        body: JSON.stringify({ profile_data: result })
-      });
-      if (res.ok) {
-        alert("Saved to case successfully!");
-        setShowSaveCaseModal(false);
-      } else {
-        alert("Failed to save to case");
-      }
-    } catch (e) {
-      alert("Error saving: " + e);
-    }
-  };
-
   const isIdentityMode = searchMode === "identity";
   const isPhoneMode    = searchMode === "phone";
+  const isFaceScanMode = searchMode === "face_scan";
   const anyLoading     = loading || identityLoading || phoneLoading;
 
   const MODES = [
@@ -797,6 +799,7 @@ export default function App() {
     { key: "phone",     label: "📱 PHONE INTEL" },
     { key: "email",     label: "EMAIL"     },
     { key: "identity",  label: "🔎 FIND BY IDENTITY" },
+    { key: "face_scan", label: "👤 FACE SCAN SEARCH" },
   ];
 
   const SCAN_STEPS = [
@@ -837,6 +840,14 @@ export default function App() {
         if (!res.ok) { const t = await res.text(); throw new Error(`Server ${res.status}: ${t}`); }
         const data = await res.json();
         setPhoneResult(data);
+        
+        const newLog = {
+          id: Date.now().toString(),
+          action: `Phone intelligence sweep completed for target phone number: "${ph}".`,
+          timestamp: new Date().toLocaleTimeString("en-IN") + " IST"
+        };
+        setAuditLogs(prev => [newLog, ...prev]);
+
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       } catch (e) { setPhoneError(formatApiError(e)); }
       finally { setPhoneLoading(false); }
@@ -853,12 +864,22 @@ export default function App() {
       });
       if (!res.ok) { const t = await res.text(); throw new Error(`Server ${res.status}: ${t}`); }
       const data = await res.json();
+      data.caseReference = caseId;
       setResult(data);
+      saveRecentInvestigations([data, ...recentInvestigations.filter(item => item.query !== data.query)].slice(0, 8));
+      
+      const newLog = {
+        id: Date.now().toString(),
+        action: `Live public OSINT sweep completed for query: "${data.query}" (Found profiles: ${data.platforms_found || 0}).`,
+        timestamp: new Date().toLocaleTimeString("en-IN") + " IST"
+      };
+      setAuditLogs(prev => [newLog, ...prev]);
+
       setReportForm(prev => ({ ...prev, caseId }));
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (e) { setError(formatApiError(e)); }
     finally { setLoading(false); }
-  }, [input, caseId, isPhoneMode]);
+  }, [input, caseId, isPhoneMode, recentInvestigations]);
 
   const handleIdentitySearch = useCallback(async (demoMode = false) => {
     const payload = demoMode
@@ -876,40 +897,18 @@ export default function App() {
       if (!res.ok) { const t = await res.text(); throw new Error(`Server ${res.status}: ${t}`); }
       const data = await res.json();
       setIdentityResult(data);
+
+      const newLog = {
+        id: Date.now().toString(),
+        action: `Identity search completed for: "${payload.full_name}" (Org: "${payload.organization}").`,
+        timestamp: new Date().toLocaleTimeString("en-IN") + " IST"
+      };
+      setAuditLogs(prev => [newLog, ...prev]);
+
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (e) { setIdentityError(formatApiError(e)); }
     finally { setIdentityLoading(false); }
   }, [identityInput]);
-
-  useEffect(() => {
-    const pendingSearch = localStorage.getItem('socmint_pending_search');
-    if (pendingSearch) {
-      const data = JSON.parse(pendingSearch);
-      localStorage.removeItem('socmint_pending_search');
-      
-      if (data.subject_username) {
-        setInput(prev => ({ ...prev, username: data.subject_username }));
-        setSearchMode("username");
-        setTimeout(() => handleSearch(data.subject_username), 500);
-      } else if (data.subject_real_name) {
-        setIdentityInput(prev => ({ ...prev, full_name: data.subject_real_name }));
-        setSearchMode("identity");
-        setTimeout(() => handleIdentitySearch(), 500);
-      }
-    }
-    
-    const loadProfile = localStorage.getItem('socmint_load_profile');
-    if (loadProfile) {
-      const profileData = JSON.parse(loadProfile);
-      localStorage.removeItem('socmint_load_profile');
-      setResult(profileData);
-      
-      const activeCaseId = localStorage.getItem('socmint_active_case_id');
-      if (activeCaseId) {
-        setReportForm(prev => ({ ...prev, caseId: activeCaseId }));
-      }
-    }
-  }, [handleSearch, handleIdentitySearch]);
 
   const handleReport = async () => {
     if (!result || !reportForm.officer || !reportForm.caseId) return;
@@ -945,22 +944,7 @@ export default function App() {
   const modeAccent = isIdentityMode ? T.orange : isPhoneMode ? "#22c55e" : T.teal;
 
   return (
-    <div className="flex min-h-screen bg-slate-950 font-sans">
-      {/* Sidebar */}
-      <div className="w-64 bg-slate-900 border-r border-cyan-900 flex flex-col p-4 z-50">
-        <div className="text-xl font-bold tracking-widest text-cyan-300 mb-8 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white">🛡</div>
-          SHIELD
-        </div>
-        <nav className="flex flex-col gap-4">
-          <Link to="/app" className="p-3 bg-cyan-900/30 border border-cyan-500 text-sm tracking-wider rounded font-bold text-cyan-300">🔍 NEW SEARCH</Link>
-          <Link to="/cases" className="p-3 bg-slate-950 border border-slate-800 hover:border-cyan-500 text-sm tracking-wider rounded text-cyan-400 transition-colors">📁 CASES</Link>
-          <div className="p-3 bg-slate-950 border border-slate-800 text-slate-500 text-sm tracking-wider rounded cursor-not-allowed">📊 DASHBOARD</div>
-          <div className="p-3 bg-slate-950 border border-slate-800 text-slate-500 text-sm tracking-wider rounded cursor-not-allowed">📄 REPORTS</div>
-        </nav>
-      </div>
-
-      <div className="dash-page flex-1 overflow-x-hidden relative">
+    <div className="dash-page">
       <style>{`
         * { box-sizing: border-box; }
         @keyframes pulse   { 0%,100%{opacity:.5} 50%{opacity:1} }
@@ -974,12 +958,7 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div className="dash-logo">🛡</div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: 3, color: T.teal }}>SOCMINT SHIELD</div>
-              <div style={{ fontSize: 10, color: T.text2, background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: 4, fontFamily: T.ff }}>
-                {officer?.badge_id} | {officer?.rank} {officer?.full_name}
-              </div>
-            </div>
+            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: 3, color: T.teal }}>SOCMINT SHIELD</div>
             <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1.2, marginTop: 2 }}>Karnataka CID · OSINT Intelligence Platform</div>
           </div>
         </div>
@@ -998,8 +977,53 @@ export default function App() {
           <button onClick={() => setShowProfileModal(true)} style={{ fontSize: 10, color: T.text, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`, padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontFamily: T.ff, outline: "none" }}>
             ⚙️ Officer Profile
           </button>
-          <button onClick={handleLogout} style={{ fontSize: 10, color: T.red, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontFamily: T.ff, outline: "none", fontWeight: "bold" }}>
-            LOGOUT
+        </div>
+      </div>
+
+      {/* MAIN VIEW TABS SELECTOR */}
+      <div className="main-view-bar-container">
+        <div className="main-view-bar">
+          <button 
+            onClick={() => setActiveMainView("search")} 
+            className={`main-view-btn ${activeMainView === "search" ? "active" : ""}`}
+          >
+            <Search style={{ width: 14, height: 14 }} />
+            Investigate Sweep
+          </button>
+          <button 
+            onClick={() => setActiveMainView("alerts")} 
+            className={`main-view-btn ${activeMainView === "alerts" ? "active" : ""}`}
+          >
+            <Bell style={{ width: 14, height: 14 }} />
+            Alerts Center
+            {unreadAlertCount > 0 && (
+              <span style={{
+                background: "#ef4444",
+                color: "#fff",
+                fontSize: "8px",
+                fontWeight: "bold",
+                padding: "2px 6px",
+                borderRadius: "10px",
+                marginLeft: "6px",
+                boxShadow: "0 0 8px rgba(239, 68, 68, 0.6)"
+              }}>
+                {unreadAlertCount}
+              </span>
+            )}
+          </button>
+          <button 
+            onClick={() => setActiveMainView("cases")} 
+            className={`main-view-btn ${activeMainView === "cases" ? "active" : ""}`}
+          >
+            <FolderOpen style={{ width: 14, height: 14 }} />
+            Case Directory
+          </button>
+          <button 
+            onClick={() => setActiveMainView("compliance")} 
+            className={`main-view-btn ${activeMainView === "compliance" ? "active" : ""}`}
+          >
+            <Info style={{ width: 14, height: 14 }} />
+            Legal Compliance
           </button>
         </div>
       </div>
@@ -1015,253 +1039,511 @@ export default function App() {
           </div>
         )}
 
-        {/* SEARCH PANEL */}
-        <div className={`${cardClass} search-panel glass-card-accent-top`} style={{ marginBottom: 24, position: "relative", zIndex: 10, "--accent": modeAccent }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
-            <div style={{ fontSize: 11, color: modeAccent, letterSpacing: 2, fontWeight: 700 }}>
-              {isPhoneMode ? "◈ PHONE INTELLIGENCE — TELECOM + UPI + FRAUD ANALYSIS" : isIdentityMode ? "◈ FIND BY IDENTITY — NAME + ORGANISATION SEARCH" : "◈ SUSPECT IDENTIFIER INPUT — 20-PLATFORM CONCURRENT SWEEP"}
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {!isIdentityMode && !isPhoneMode && (
-                <button onClick={() => { setSearchMode("username"); handleSearch("torvalds"); }} style={{ padding: "5px 14px", borderRadius: 6, border: `1px solid ${T.border}`, background: "rgba(99,202,183,0.07)", color: T.teal, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO</button>
+        {activeMainView === "search" && (
+          <>
+            {/* SEARCH PANEL */}
+            <div className={`${cardClass} search-panel glass-card-accent-top`} style={{ marginBottom: 24, position: "relative", zIndex: 10, "--accent": modeAccent }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ fontSize: 11, color: modeAccent, letterSpacing: 2, fontWeight: 700 }}>
+                  {isPhoneMode ? "◈ PHONE INTELLIGENCE — TELECOM + UPI + FRAUD ANALYSIS" : isIdentityMode ? "◈ FIND BY IDENTITY — NAME + ORGANISATION SEARCH" : "◈ SUSPECT IDENTIFIER INPUT — 20-PLATFORM CONCURRENT SWEEP"}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!isIdentityMode && !isPhoneMode && (
+                    <button onClick={() => { setSearchMode("username"); handleSearch("torvalds"); }} style={{ padding: "5px 14px", borderRadius: 6, border: `1px solid ${T.border}`, background: "rgba(99,202,183,0.07)", color: T.teal, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO</button>
+                  )}
+                  {isIdentityMode && (
+                    <button onClick={() => handleIdentitySearch(true)} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid rgba(251,146,60,0.3)", background: "rgba(251,146,60,0.07)", color: T.orange, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO</button>
+                  )}
+                  {isPhoneMode && (
+                    <button onClick={() => { setInput(p => ({ ...p, phone: "9845012345" })); handleSearch(null, "9845012345"); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.07)", color: T.green, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO (9845012345)</button>
+                  )}
+                </div>
+              </div>
+
+              {/* Mode tabs */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap", "--mode-accent": modeAccent }}>
+                {MODES.map(({ key, label }) => (
+                  <button key={key} onClick={() => setSearchMode(key)}
+                    className={`mode-tab ${searchMode === key ? "active" : ""}`}
+                    style={{ "--mode-accent": modeAccent }}
+                  >{label}</button>
+                ))}
+              </div>
+
+              {/* Standard / Phone input */}
+              {!isIdentityMode && !isFaceScanMode && (
+                <div style={{ display: "flex", gap: 12 }}>
+                  <input className="search-input" value={input[isPhoneMode ? "phone" : searchMode]}
+                    onChange={e => setInput(prev => ({ ...prev, [isPhoneMode ? "phone" : searchMode]: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && handleSearch()}
+                    placeholder={inputPlaceholder}
+                    style={{ borderColor: `${modeAccent}44` }} />
+                  <button className="search-btn" onClick={() => handleSearch()} disabled={anyLoading} style={{
+                    cursor: anyLoading ? "not-allowed" : "pointer",
+                    background: anyLoading ? "rgba(99,202,183,0.2)" : `linear-gradient(135deg, ${modeAccent}, #3b82f6)`,
+                    color: anyLoading ? modeAccent : T.navy2,
+                  }}>{anyLoading ? "SCANNING…" : isPhoneMode ? "🔍 ANALYSE" : "◈ SEARCH"}</button>
+                </div>
               )}
+
+              {/* Face scan search panel */}
+              {isFaceScanMode && (
+                <FaceScanCard apiKey={API_KEY} apiBase={API_BASE} />
+              )}
+
+              {/* Identity input */}
               {isIdentityMode && (
-                <button onClick={() => handleIdentitySearch(true)} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid rgba(251,146,60,0.3)", background: "rgba(251,146,60,0.07)", color: T.orange, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO</button>
-              )}
-              {isPhoneMode && (
-                <button onClick={() => { setInput(p => ({ ...p, phone: "9845012345" })); handleSearch(null, "9845012345"); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.07)", color: T.green, cursor: "pointer", fontFamily: T.ff, fontSize: 10 }}>▶ TRY DEMO (9845012345)</button>
-              )}
-            </div>
-          </div>
-
-          {/* Mode tabs */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap", "--mode-accent": modeAccent }}>
-            {MODES.map(({ key, label }) => (
-              <button key={key} onClick={() => setSearchMode(key)}
-                className={`mode-tab ${searchMode === key ? "active" : ""}`}
-                style={{ "--mode-accent": modeAccent }}
-              >{label}</button>
-            ))}
-          </div>
-
-          {/* Standard / Phone input */}
-          {!isIdentityMode && (
-            <div style={{ display: "flex", gap: 12 }}>
-              <input className="search-input" value={input[isPhoneMode ? "phone" : searchMode]}
-                onChange={e => setInput(prev => ({ ...prev, [isPhoneMode ? "phone" : searchMode]: e.target.value }))}
-                onKeyDown={e => e.key === "Enter" && handleSearch()}
-                placeholder={inputPlaceholder}
-                style={{ borderColor: `${modeAccent}44` }} />
-              <button className="search-btn" onClick={() => handleSearch()} disabled={anyLoading} style={{
-                cursor: anyLoading ? "not-allowed" : "pointer",
-                background: anyLoading ? "rgba(99,202,183,0.2)" : `linear-gradient(135deg, ${modeAccent}, #3b82f6)`,
-                color: anyLoading ? modeAccent : T.navy2,
-              }}>{anyLoading ? "SCANNING…" : isPhoneMode ? "🔍 ANALYSE" : "◈ SEARCH"}</button>
-            </div>
-          )}
-
-          {/* Identity input */}
-          {isIdentityMode && (
-            <div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
                 <div>
-                  <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>FULL NAME *</div>
-                  <input value={identityInput.full_name} onChange={e => setIdentityInput(p => ({ ...p, full_name: e.target.value }))} onKeyDown={e => e.key === "Enter" && handleIdentitySearch()} placeholder="e.g. Sai Kishan"
-                    style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.35)", borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>COLLEGE / ORGANIZATION *</div>
-                  <input value={identityInput.organization} onChange={e => setIdentityInput(p => ({ ...p, organization: e.target.value }))} onKeyDown={e => e.key === "Enter" && handleIdentitySearch()} placeholder="e.g. PES University"
-                    style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.35)", borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "end" }}>
-                <div>
-                  <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>CITY (optional)</div>
-                  <input value={identityInput.city} onChange={e => setIdentityInput(p => ({ ...p, city: e.target.value }))} placeholder="e.g. Bangalore"
-                    style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>GRADUATION YEAR (optional)</div>
-                  <input value={identityInput.year} onChange={e => setIdentityInput(p => ({ ...p, year: e.target.value }))} placeholder="e.g. 2028"
-                    style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
-                </div>
-                <button onClick={() => handleIdentitySearch()} disabled={identityLoading || !identityInput.full_name || !identityInput.organization}
-                  style={{ padding: "11px 28px", borderRadius: 8, border: "none", cursor: identityLoading ? "not-allowed" : "pointer", background: "linear-gradient(135deg,#ea580c,#f59e0b)", color: "white", fontWeight: 700, fontFamily: T.ff, fontSize: 12, opacity: (!identityInput.full_name || !identityInput.organization) ? 0.4 : 1 }}>
-                  {identityLoading ? "SEARCHING…" : "🔎 FIND PERSON"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Progress */}
-          {anyLoading && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
-                <div style={{ height: "100%", borderRadius: 2, backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite linear", width: "60%",
-                  background: `linear-gradient(90deg, ${modeAccent}, #3b82f6, ${modeAccent})` }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.text3 }}>
-                <span style={{ color: modeAccent }}>⬤ {currentStep}</span>
-                <span>{isPhoneMode ? "7 sources analysed" : isIdentityMode ? "Building identity profile…" : "All 20 platforms in parallel"}</span>
-              </div>
-              {!isIdentityMode && !isPhoneMode && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10, marginTop: 16 }}>
-                  {ALL_PLATFORMS.map(p => <SkeletonCard key={p} />)}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>FULL NAME *</div>
+                      <input value={identityInput.full_name} onChange={e => setIdentityInput(p => ({ ...p, full_name: e.target.value }))} onKeyDown={e => e.key === "Enter" && handleIdentitySearch()} placeholder="e.g. Sai Kishan"
+                        style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.35)", borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>COLLEGE / ORGANIZATION *</div>
+                      <input value={identityInput.organization} onChange={e => setIdentityInput(p => ({ ...p, organization: e.target.value }))} onKeyDown={e => e.key === "Enter" && handleIdentitySearch()} placeholder="e.g. PES University"
+                        style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.35)", borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "end" }}>
+                    <div>
+                      <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>CITY (optional)</div>
+                      <input value={identityInput.city} onChange={e => setIdentityInput(p => ({ ...p, city: e.target.value }))} placeholder="e.g. Bangalore"
+                        style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 9, color: T.text3, letterSpacing: 1, marginBottom: 5 }}>GRADUATION YEAR (optional)</div>
+                      <input value={identityInput.year} onChange={e => setIdentityInput(p => ({ ...p, year: e.target.value }))} placeholder="e.g. 2028"
+                        style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, borderRadius: 8, padding: "11px 14px", color: T.text, fontFamily: T.ff, fontSize: 13, outline: "none" }} />
+                    </div>
+                    <button onClick={() => handleIdentitySearch()} disabled={identityLoading || !identityInput.full_name || !identityInput.organization}
+                      style={{ padding: "11px 28px", borderRadius: 8, border: "none", cursor: identityLoading ? "not-allowed" : "pointer", background: "linear-gradient(135deg,#ea580c,#f59e0b)", color: "white", fontWeight: 700, fontFamily: T.ff, fontSize: 12, opacity: (!identityInput.full_name || !identityInput.organization) ? 0.4 : 1 }}>
+                      {identityLoading ? "SEARCHING…" : "🔎 FIND PERSON"}
+                    </button>
+                  </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {error        && <div style={{ marginTop: 12, color: T.red, fontSize: 12, padding: "10px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>⚠ {error}</div>}
-          {identityError && <div style={{ marginTop: 12, color: T.red, fontSize: 12, padding: "10px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>⚠ {identityError}</div>}
-          {phoneError   && <div style={{ marginTop: 12, color: T.red, fontSize: 12, padding: "10px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>⚠ {phoneError}</div>}
-        </div>
-
-        {/* PHONE RESULTS */}
-        {phoneResult && isPhoneMode && (
-          <div ref={resultsRef}><PhoneIntelCard data={phoneResult} /></div>
-        )}
-
-        {/* IDENTITY RESULTS */}
-        {identityResult && isIdentityMode && (
-          <div ref={resultsRef}><IdentityResults result={identityResult} /></div>
-        )}
-
-        {/* STANDARD OSINT RESULTS */}
-        {result && !isIdentityMode && !isPhoneMode && (
-          <motion.div ref={resultsRef} className="fade-in" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
-            {/* Results hero */}
-            <div className={`${cardClass} results-hero glass-card-accent-top`} style={{ "--accent": riskColor }}>
-              <div>
-                <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1.5, marginBottom: 6, textTransform: "uppercase" }}>Target Identified</div>
-                <div className="results-query">{result.query}</div>
-                <div className="results-meta" style={{ marginTop: 10 }}>
-                  <span>🔍 {result.platforms_checked} platforms</span>
-                  <span>✅ {result.platforms_found} found</span>
-                  <span>⏱ {result.elapsed_seconds}s scan</span>
+              {/* Progress */}
+              {anyLoading && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
+                    <div style={{ height: "100%", borderRadius: 2, backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite linear", width: "60%",
+                      background: `linear-gradient(90deg, ${modeAccent}, #3b82f6, ${modeAccent})` }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.text3 }}>
+                    <span style={{ color: modeAccent }}>⬤ {currentStep}</span>
+                    <span>{isPhoneMode ? "7 sources analysed" : isIdentityMode ? "Building identity profile…" : "All 20 platforms in parallel"}</span>
+                  </div>
+                  {!isIdentityMode && !isPhoneMode && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10, marginTop: 16 }}>
+                      {ALL_PLATFORMS.map(p => <SkeletonCard key={p} />)}
+                    </div>
+                  )}
                 </div>
-              </div>
-              <RiskGauge score={result.risk_score.score} level={result.risk_score.level} />
+              )}
+
+              {error        && <div style={{ marginTop: 12, color: T.red, fontSize: 12, padding: "10px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>⚠ {error}</div>}
+              {identityError && <div style={{ marginTop: 12, color: T.red, fontSize: 12, padding: "10px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>⚠ {identityError}</div>}
+              {phoneError   && <div style={{ marginTop: 12, color: T.red, fontSize: 12, padding: "10px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>⚠ {phoneError}</div>}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
-              <StatCard icon="🔍" label="Platforms Checked" value={result.platforms_checked} delay={0.05} glow="rgba(59,130,246,0.12)" />
-              <StatCard icon="✅" label="Profiles Found" value={result.platforms_found} color={T.teal} delay={0.1} glow="rgba(99,202,183,0.15)" />
-              <StatCard icon="⏱" label="Scan Time" value={`${result.elapsed_seconds}s`} delay={0.15} glow="rgba(245,158,11,0.1)" />
-            </div>
-
-            <div className={`${cardClass} rec-banner`} style={{ borderLeft: `3px solid ${riskColor}` }}>
-              <div style={{ fontSize: 10, color: T.text3, marginBottom: 6, letterSpacing: 1, textTransform: "uppercase" }}>Recommendation</div>
-              <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{result.risk_score.recommendation}</div>
-            </div>
-
-            {result.risk_score.signals?.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
-                {result.risk_score.signals.map((s, i) => <SignalBadge key={i} signal={s} />)}
-              </div>
+            {/* PHONE RESULTS */}
+            {phoneResult && isPhoneMode && (
+              <div ref={resultsRef}><PhoneIntelCard data={phoneResult} /></div>
             )}
 
-            {result.wikidata && <WikidataCard wikidata={result.wikidata} />}
+            {/* IDENTITY RESULTS */}
+            {identityResult && isIdentityMode && (
+              <div ref={resultsRef}><IdentityResults result={identityResult} /></div>
+            )}
 
-            <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-              <button className="action-btn" onClick={handleCopyJSON}>📋 Copy JSON</button>
-              <button className="action-btn primary" onClick={() => setShowShareModal(true)}>🔗 Share with Delhi Cyber Police</button>
-            </div>
+            {/* STANDARD OSINT RESULTS */}
+            {result && !isIdentityMode && !isPhoneMode && (
+              <motion.div ref={resultsRef} className="fade-in" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+                {/* Results hero */}
+                <div className={`${cardClass} results-hero glass-card-accent-top`} style={{ "--accent": riskColor }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: T.text3, letterSpacing: 1.5, marginBottom: 6, textTransform: "uppercase" }}>Target Identified</div>
+                    <div className="results-query">{result.query}</div>
+                    <div className="results-meta" style={{ marginTop: 10 }}>
+                      <span>🔍 {result.platforms_checked} platforms</span>
+                      <span>✅ {result.platforms_found} found</span>
+                      <span>⏱ {result.elapsed_seconds}s scan</span>
+                    </div>
+                  </div>
+                  <RiskGauge score={result.risk_score.score} level={result.risk_score.level} />
+                </div>
 
-            <div className="view-tab-bar">
-              {[
-                ["platforms", `Platforms (${result.platforms.length})`],
-                ["alias", `Alias Map (${result.alias_map?.length||0})`],
-                ["shadow", `Shadow Accounts (${result.shadow_accounts?.length||0})`],
-                ["nexus", "Nexus Graph"],
-                ["financial", "Financial Footprint"],
-                ["geo", `Geo (${result.geo_mentions?.length||0})`],
-                ["timeline", `Activity (${result.timeline?.length||0})`],
-                ["evasion", "Evasion Timeline"],
-                ["sentiment", "Sentiment & Tone"],
-                ["news", "News & Web"]
-              ].map(([view, label]) => (
-                <button key={view} onClick={() => setActiveView(view)} className={`view-tab ${activeView === view ? "active" : ""}`}>{label}</button>
-              ))}
-            </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
+                  <StatCard icon="🔍" label="Platforms Checked" value={result.platforms_checked} delay={0.05} glow="rgba(59,130,246,0.12)" />
+                  <StatCard icon="✅" label="Profiles Found" value={result.platforms_found} color={T.teal} delay={0.1} glow="rgba(99,202,183,0.15)" />
+                  <StatCard icon="⏱" label="Scan Time" value={`${result.elapsed_seconds}s`} delay={0.15} glow="rgba(245,158,11,0.1)" />
+                </div>
 
-            {activeView === "platforms" && (
-              <>
-                <div className="filter-tab-bar">
-                  {[["all",`All (${result.platforms.length})`],["found",`Found (${foundPlatforms.length})`],["not_found",`Not Found (${notFoundPlatforms.length})`]].map(([tab, label]) => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} className={`filter-tab ${activeTab === tab ? "active" : ""}`}>{label}</button>
+                <div className={`${cardClass} rec-banner`} style={{ borderLeft: `3px solid ${riskColor}` }}>
+                  <div style={{ fontSize: 10, color: T.text3, marginBottom: 6, letterSpacing: 1, textTransform: "uppercase" }}>Recommendation</div>
+                  <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{result.risk_score.recommendation}</div>
+                </div>
+
+                {result.risk_score.signals?.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+                    {result.risk_score.signals.map((s, i) => <SignalBadge key={i} signal={s} />)}
+                  </div>
+                )}
+
+                {result.wikidata && <WikidataCard wikidata={result.wikidata} />}
+
+                <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+                  <button className="action-btn" onClick={handleCopyJSON}>📋 Copy JSON</button>
+                  <button className="action-btn primary" onClick={() => setShowShareModal(true)}>🔗 Share with Delhi Cyber Police</button>
+                </div>
+
+                <div className="view-tab-bar">
+                  {[
+                    ["platforms", `Platforms (${result.platforms.length})`],
+                    ["alias", `Alias Map (${result.alias_map?.length||0})`],
+                    ["shadow", `Shadow Accounts (${result.shadow_accounts?.length||0})`],
+                    ["nexus", "Nexus Graph"],
+                    ["financial", "Financial Footprint"],
+                    ["geo", `Geo (${result.geo_mentions?.length||0})`],
+                    ["timeline", `Activity (${result.timeline?.length||0})`],
+                    ["evasion", "Evasion Timeline"],
+                    ["news", "News & Web"],
+                    ["image_forensics", "Image Forensics"],
+                    ["crypto_trace", "Crypto Trace"],
+                    ["darkweb_monitor", "Dark Web/Telegram"],
+                    ["nlp_analyzer", "NLP Text Analyzer"],
+                    ["domain_intel", "Domain & IP Intel"]
+                  ].map(([view, label]) => (
+                    <button key={view} onClick={() => setActiveView(view)} className={`view-tab ${activeView === view ? "active" : ""}`}>{label}</button>
                   ))}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}>
-                  {displayPlatforms.map((p, i) => <PlatformCard key={i} p={p} isEmailQuery={result?.query?.includes("@")} />)}
+
+                {activeView === "platforms" && (
+                  <>
+                    <div className="filter-tab-bar">
+                      {[["all",`All (${result.platforms.length})`],["found",`Found (${foundPlatforms.length})`],["not_found",`Not Found (${notFoundPlatforms.length})`]].map(([tab, label]) => (
+                        <button key={tab} onClick={() => setActiveTab(tab)} className={`filter-tab ${activeTab === tab ? "active" : ""}`}>{label}</button>
+                      ))}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}>
+                      {displayPlatforms.map((p, i) => <PlatformCard key={i} p={p} />)}
+                    </div>
+                  </>
+                )}
+                {activeView === "alias"    && <AliasMap aliases={result.alias_map} />}
+                {activeView === "shadow"   && <ShadowAccounts profileData={result} />}
+                {activeView === "nexus"    && <div className={cardClass} style={{ height: "600px", width: "100%", marginBottom: 24, overflow: "hidden" }}><NetworkGraph profileData={result} /></div>}
+                {activeView === "financial" && <FinancialFootprint profileData={result} />}
+                {activeView === "geo"      && <LocationMap suspect={result} />}
+                {activeView === "timeline" && <BehaviouralTimeline timeline={result.timeline} />}
+                {activeView === "evasion"  && <EvasionTimeline profileData={result} />}
+                {activeView === "news"     && <NewsPanel query={result.query} preloaded={result.news_articles} />}
+                {activeView === "image_forensics" && (
+                  <ImageForensicsCard
+                    avatars={
+                      result.platforms
+                        ?.filter(p => p.found && p.avatar)
+                        ?.map(p => ({
+                          platform: p.platform,
+                          url: p.avatar,
+                          label: p.display_name || p.platform
+                        })) || []
+                    }
+                    apiKey={API_KEY}
+                    apiBase={API_BASE}
+                  />
+                )}
+                {activeView === "crypto_trace" && (
+                  <CryptoTraceCard apiKey={API_KEY} apiBase={API_BASE} />
+                )}
+                {activeView === "darkweb_monitor" && (
+                  <DarkWebMonitor apiKey={API_KEY} apiBase={API_BASE} defaultQuery={result.query} />
+                )}
+                {activeView === "nlp_analyzer" && (
+                  <NLPAnalyzer
+                    apiKey={API_KEY}
+                    apiBase={API_BASE}
+                    defaultText={
+                      result.platforms
+                        ?.filter(p => p.found)
+                        ?.map(p => {
+                          const bio = p.bio || "";
+                          const postsText = p.posts?.map(post => post.title || "").join(". ") || "";
+                          return `${p.platform} bio: ${bio}. Posts: ${postsText}`;
+                        })
+                        ?.filter(t => t.trim())
+                        ?.join("\n\n") || ""
+                    }
+                  />
+                )}
+                {activeView === "domain_intel" && (
+                  <DomainIntelCard apiKey={API_KEY} apiBase={API_BASE} defaultQuery={result.query} />
+                )}
+
+                <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, marginBottom: 20, border: "1px solid rgba(251,146,60,0.35)", "--accent": T.orange }}>
+                  <SectionHeader icon="📄" title="Section 65B Digital Evidence Report" subtitle="Indian Evidence Act, 1872 · Court-admissible export" />
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                    <input value={reportForm.officer} onChange={e => setReportForm(p => ({ ...p, officer: e.target.value }))} placeholder="Investigating Officer Name"
+                      style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
+                    <input value={reportForm.badge} onChange={e => setReportForm(p => ({ ...p, badge: e.target.value }))} placeholder="Badge / ID Number"
+                      style={{ flex: 1, minWidth: 150, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
+                    <input value={reportForm.station} onChange={e => setReportForm(p => ({ ...p, station: e.target.value }))} placeholder="Police Station / Agency"
+                      style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
+                    <input value={reportForm.caseId} onChange={e => setReportForm(p => ({ ...p, caseId: e.target.value }))} placeholder="Case ID (e.g. CID/KA/2026/001)"
+                      style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
+                    <button onClick={handleReport} disabled={reportLoading || !reportForm.officer || !reportForm.caseId}
+                      style={{ padding: "10px 24px", borderRadius: 8, border: "none", cursor: "pointer", background: (!reportForm.officer || !reportForm.caseId) ? "rgba(251,146,60,0.2)" : "linear-gradient(135deg,#ea580c,#dc2626)", color: "white", fontWeight: 700, fontFamily: T.ff, fontSize: 11, opacity: (!reportForm.officer || !reportForm.caseId) ? 0.45 : 1 }}>
+                      {reportLoading ? "GENERATING…" : "⬇ DOWNLOAD 65B REPORT"}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 10, color: T.text3 }}>SHA-256 · chain of custody · alias map · officer certificate · court-admissible</div>
+                </div>
+              </motion.div>
+            )}
+
+            {!result && !identityResult && !phoneResult && !anyLoading && (
+              <>
+                <div style={{ textAlign: "center", padding: "12px 0", color: T.text3, marginBottom: 24, position: "relative", zIndex: 10 }}>
+                  <div style={{ fontSize: 11, letterSpacing: 2, marginBottom: 6, fontWeight: 600, color: T.teal }}>
+                    {isPhoneMode ? "◈ ENTER AN INDIAN PHONE NUMBER FOR INTELLIGENCE ANALYSIS" : isIdentityMode ? "◈ ENTER NAME + ORGANISATION TO FIND SOCIAL PROFILES" : "◈ ENTER A SUSPECT IDENTIFIER TO BEGIN OSINT SWEEP"}
+                  </div>
+                  <div style={{ fontSize: 9, opacity: 0.6 }}>
+                    {isPhoneMode ? "Telecom circle · UPI identity map · NCCRP check · web mentions · risk scoring" : isIdentityMode ? "Web search + username checks · confidence scoring · 65B PDF" : "20 platforms concurrently · risk scoring · alias detection · 65B PDF"}
+                  </div>
+                </div>
+
+                <div style={{ maxWidth: 1280, margin: "0 auto", position: "relative", zIndex: 10, paddingBottom: 40 }} className="fade-in">
+                  <div style={{ fontSize: 10, color: T.teal, letterSpacing: 2, fontWeight: 700, marginBottom: 12 }} className="mono">◈ AUXILIARY INTELLIGENCE TOOLS</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 20 }}>
+                    <CryptoTraceCard apiKey={API_KEY} apiBase={API_BASE} />
+                    <DarkWebMonitor apiKey={API_KEY} apiBase={API_BASE} />
+                    <ImageForensicsCard avatars={[]} apiKey={API_KEY} apiBase={API_BASE} />
+                    <NLPAnalyzer apiKey={API_KEY} apiBase={API_BASE} />
+                    <DomainIntelCard apiKey={API_KEY} apiBase={API_BASE} />
+                    <FaceScanCard apiKey={API_KEY} apiBase={API_BASE} />
+                  </div>
                 </div>
               </>
             )}
-            {activeView === "alias"    && <AliasMap aliases={result.alias_map} />}
-            {activeView === "shadow"   && <ShadowAccounts profileData={result} />}
-            {activeView === "nexus"    && <div className={cardClass} style={{ height: "600px", width: "100%", marginBottom: 24, overflow: "hidden" }}><NetworkGraph profileData={result} /></div>}
-            {activeView === "financial" && <FinancialFootprint profileData={result} />}
-            {activeView === "geo"      && <GeoMentions geos={result.geo_mentions} />}
-            {activeView === "timeline" && (
-              <div className="flex flex-col gap-6">
-                <ActivityHeatmap profileData={result} />
-                <BehaviouralTimeline timeline={result.timeline} />
+
+            {/* PERSISTENT 3D GLOBE SCANNER BACKGROUND */}
+            {!result && !identityResult && !phoneResult && (
+              <div style={{
+                position: "fixed",
+                inset: 0,
+                width: "100vw",
+                height: "100vh",
+                zIndex: anyLoading ? 9998 : 1,
+                transition: "z-index 0.5s ease",
+                background: "transparent",
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                pointerEvents: anyLoading ? "none" : "auto",
+              }}>
+                <GlobeScanner isScanning={anyLoading} scanStep={scanStep} />
               </div>
             )}
-            {activeView === "evasion"  && <EvasionTimeline profileData={result} />}
-            {activeView === "sentiment" && <SentimentPanel profileData={result} />}
-            {activeView === "news"     && <NewsPanel query={result.query} preloaded={result.news_articles} />}
-
-            <div className={`${cardClass} glass-card-accent-top`} style={{ padding: 24, marginBottom: 20, border: "1px solid rgba(251,146,60,0.35)", "--accent": T.orange }}>
-              <SectionHeader icon="📄" title="Section 65B Digital Evidence Report" subtitle="Indian Evidence Act, 1872 · Court-admissible export" />
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                <input value={reportForm.officer} onChange={e => setReportForm(p => ({ ...p, officer: e.target.value }))} placeholder="Investigating Officer Name"
-                  style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
-                <input value={reportForm.badge} onChange={e => setReportForm(p => ({ ...p, badge: e.target.value }))} placeholder="Badge / ID Number"
-                  style={{ flex: 1, minWidth: 150, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
-                <input value={reportForm.station} onChange={e => setReportForm(p => ({ ...p, station: e.target.value }))} placeholder="Police Station / Agency"
-                  style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
-                <input value={reportForm.caseId} onChange={e => setReportForm(p => ({ ...p, caseId: e.target.value }))} placeholder="Case ID (e.g. CID/KA/2026/001)"
-                  style={{ flex: 1, minWidth: 200, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 8, padding: "10px 14px", color: T.text, fontFamily: T.ff, fontSize: 12, outline: "none" }} />
-                <button onClick={handleReport} disabled={reportLoading || !reportForm.officer || !reportForm.caseId}
-                  style={{ padding: "10px 24px", borderRadius: 8, border: "none", cursor: "pointer", background: (!reportForm.officer || !reportForm.caseId) ? "rgba(251,146,60,0.2)" : "linear-gradient(135deg,#ea580c,#dc2626)", color: "white", fontWeight: 700, fontFamily: T.ff, fontSize: 11, opacity: (!reportForm.officer || !reportForm.caseId) ? 0.45 : 1 }}>
-                  {reportLoading ? "GENERATING…" : "⬇ DOWNLOAD 65B REPORT"}
-                </button>
-              </div>
-              <div style={{ fontSize: 10, color: T.text3 }}>SHA-256 · chain of custody · alias map · officer certificate · court-admissible</div>
-            </div>
-          </motion.div>
+          </>
         )}
 
-        {!result && !identityResult && !phoneResult && !anyLoading && (
-          <div style={{ textAlign: "center", padding: "12px 0", color: T.text3, marginBottom: 10, position: "relative", zIndex: 10 }}>
-            <div style={{ fontSize: 11, letterSpacing: 2, marginBottom: 6, fontWeight: 600, color: T.teal }}>
-              {isPhoneMode ? "◈ ENTER AN INDIAN PHONE NUMBER FOR INTELLIGENCE ANALYSIS" : isIdentityMode ? "◈ ENTER NAME + ORGANISATION TO FIND SOCIAL PROFILES" : "◈ ENTER A SUSPECT IDENTIFIER TO BEGIN OSINT SWEEP"}
+        {activeMainView === "alerts" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div className="glass-panel" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h4 style={{ margin: 0, color: "#fff", letterSpacing: "1.5px" }} className="mono">ACTIVE REAL-TIME DISCOVERY MONITOR</h4>
+                <div style={{ fontSize: "10px", color: T.text3, marginTop: "4px" }} className="mono">System listening for suspect status updates</div>
+              </div>
             </div>
-            <div style={{ fontSize: 9, opacity: 0.6 }}>
-              {isPhoneMode ? "Telecom circle · UPI identity map · NCCRP check · web mentions · risk scoring" : isIdentityMode ? "Web search + username checks · confidence scoring · 65B PDF" : "20 platforms concurrently · risk scoring · alias detection · 65B PDF"}
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {alerts.map((alert) => (
+                <div 
+                  key={alert.id} 
+                  className={`alert-card ${!alert.isRead ? "unread" : ""}`}
+                >
+                  <div className={`alert-card-stripe ${alert.type}`} />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", flexWrap: "wrap", gap: "8px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ 
+                          fontSize: "8px", 
+                          fontWeight: "bold", 
+                          letterSpacing: "0.5px", 
+                          padding: "2px 8px", 
+                          borderRadius: "4px", 
+                          background: alert.type === "critical" ? "rgba(239, 68, 68, 0.15)" : alert.type === "warning" ? "rgba(245, 158, 11, 0.15)" : "rgba(59, 130, 246, 0.15)",
+                          color: alert.type === "critical" ? "#fca5a5" : alert.type === "warning" ? "#fde047" : "#93c5fd",
+                          border: `1px solid ${alert.type === "critical" ? "rgba(239, 68, 68, 0.3)" : alert.type === "warning" ? "rgba(245, 158, 11, 0.3)" : "rgba(59, 130, 246, 0.3)"}`
+                        }} className="mono">
+                          {alert.type.toUpperCase()}
+                        </span>
+                        <span style={{ fontSize: "10px", color: T.text3 }} className="mono">{alert.timestamp}</span>
+                      </div>
+                      <h5 style={{ margin: "4px 0", color: "#fff", fontSize: "13px" }} className="mono">{alert.title}</h5>
+                      <p style={{ margin: 0, color: T.text2, fontSize: "11px", lineHeight: "1.5" }} className="mono">{alert.details}</p>
+                    </div>
+                    {!alert.isRead && (
+                      <button 
+                        onClick={() => handleMarkAlertRead(alert.id)}
+                        style={{ 
+                          padding: "6px 12px", 
+                          background: "rgba(99, 202, 183, 0.1)", 
+                          border: "1px solid rgba(99, 202, 183, 0.25)", 
+                          borderRadius: "8px", 
+                          color: T.teal, 
+                          fontSize: "10px", 
+                          cursor: "pointer",
+                          fontFamily: T.ff,
+                          fontWeight: "bold"
+                        }}
+                      >
+                        Mark Audited
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* PERSISTENT 3D GLOBE SCANNER BACKGROUND */}
-        {!result && !identityResult && !phoneResult && (
-          <div style={{
-            position: "fixed",
-            inset: 0,
-            width: "100vw",
-            height: "100vh",
-            zIndex: anyLoading ? 9998 : 1,
-            transition: "z-index 0.5s ease",
-            background: "transparent",
-            overflow: "hidden",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            pointerEvents: anyLoading ? "none" : "auto",
-          }}>
-            <GlobeScanner isScanning={anyLoading} scanStep={scanStep} />
+        {activeMainView === "cases" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div className="glass-panel" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h4 style={{ margin: 0, color: "#fff", letterSpacing: "1.5px" }} className="mono">CASE DIRECTORY & SUSPECT DOSSIERS</h4>
+                <div style={{ fontSize: "10px", color: T.text3, marginTop: "4px" }} className="mono">Tamper-proof blockchain logs & offline session archives</div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "20px", alignItems: "start" }}>
+              <div>
+                <CaseManager apiKey={API_KEY} apiBase={API_BASE} officer={officerProfile.name || "Unknown Officer"} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{ fontSize: 11, color: T.teal, letterSpacing: 1.5, fontWeight: 700, borderBottom: `1px solid ${T.border}`, paddingBottom: 8 }} className="mono">
+                  SESSION SUSPECT ARCHIVES
+                </div>
+                {recentInvestigations.length === 0 ? (
+                  <div className="glass-panel" style={{ textAlign: "center", padding: "40px" }}>
+                    <p style={{ color: T.text3, fontSize: "12px", margin: 0 }} className="mono">
+                      No stored suspect directory is loaded. Run a live sweep to create a temporary session dossier.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="cases-grid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+                    {recentInvestigations.map((profile) => {
+                      const riskLvl = profile.risk_score?.level || "MINIMAL";
+                      const riskSc = profile.risk_score?.score || 0;
+                      const color = RISK_COLORS[riskLvl] || T.teal;
+                      const foundPlatformsCount = profile.platforms?.filter(p => p.found).length || 0;
+
+                      return (
+                        <div 
+                          key={profile.query} 
+                          onClick={() => {
+                            setResult(profile);
+                            setActiveTab("all");
+                            setActiveView("platforms");
+                            setActiveMainView("search");
+                          }}
+                          className="case-card"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                            <div style={{ 
+                              width: "40px", 
+                              height: "40px", 
+                              borderRadius: "10px", 
+                              border: `1px solid ${T.border}`, 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "center", 
+                              fontSize: "18px", 
+                              background: "rgba(255,255,255,0.02)"
+                            }}>
+                              👤
+                            </div>
+                            <span style={{ 
+                              fontSize: "8px", 
+                              fontWeight: "bold", 
+                              letterSpacing: "0.5px", 
+                              padding: "2px 8px", 
+                              borderRadius: "10px", 
+                              background: `${color}15`, 
+                              color: color, 
+                              border: `1px solid ${color}30`
+                            }} className="mono">
+                              {riskLvl}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: "12px" }}>
+                            <h5 style={{ margin: "0 0 4px 0", color: "#fff", fontSize: "13px" }}>{(profile.query || "unknown").toUpperCase()}</h5>
+                            <span style={{ fontSize: "10px", color: T.text3 }} className="mono">Case Ref: {profile.caseReference || "CID-ACTIVE"}</span>
+                          </div>
+                          <div style={{ 
+                            marginTop: "12px", 
+                            paddingTop: "10px", 
+                            borderTop: "1px solid rgba(255,255,255,0.05)", 
+                            display: "flex", 
+                            justifyContent: "space-between", 
+                            fontSize: "10px", 
+                            color: T.text2 
+                          }} className="mono">
+                            <span>{foundPlatformsCount} Profiles Found</span>
+                            <span>BRS: <strong style={{ color: "#fff" }}>{riskSc}</strong></span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeMainView === "compliance" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div className="glass-panel" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#3b82f6" }}>
+                <Shield style={{ width: "20px", height: "20px" }} />
+                <h4 style={{ margin: 0, color: "#fff", letterSpacing: "1px" }} className="mono">
+                  PRIVACY POLICY & OSINT GUIDELINES COMPLIANCE
+                </h4>
+              </div>
+              <div className="compliance-text">
+                <div className="compliance-title">1. ARTICLE 21 CONSTITUTION BOUNDS & DPDP ACT 2023</div>
+                <p>
+                  SOCMINT Shield is strictly designed as an Open Source Intelligence (OSINT) pipeline. It scans only public-facing profiles, geotag stickers, and public registries. The tool does not intercept private messaging packets, hack user endpoints, or bypass credential locks. Under Article 21, public data is admissible when processed transparently for state security.
+                </p>
+                <div className="compliance-title" style={{ marginTop: "20px" }}>2. SECTION 65B INDIAN EVIDENCE ACT ADMISSIBILITY</div>
+                <p>
+                  Electronic evidence captured by this portal is verified with cryptographic SHA-256 block signatures. This acts as tamper-proof metadata log registration, qualifying as compliant certificate files under Section 65B without requiring external expert verification.
+                </p>
+              </div>
+            </div>
+
+            <div className="glass-panel">
+              <h4 style={{ margin: "0 0 16px 0", color: "#fff", letterSpacing: "1px" }} className="mono">
+                SESSION COMPLIANCE AUDIT LOGS
+              </h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "250px", overflowY: "auto", paddingRight: "8px" }} className="mono">
+                {auditLogs.map((log) => (
+                  <div key={log.id} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "8px", fontSize: "11px" }}>
+                    <span style={{ color: T.text2, maxWidth: "80%" }}>{log.action}</span>
+                    <span style={{ color: T.text3, fontSize: "10px", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <Clock style={{ width: "12px", height: "12px" }} />
+                      {log.timestamp}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1458,49 +1740,6 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Floating SAVE TO CASE Button */}
-      {result && !anyLoading && (
-        <button 
-          onClick={() => { fetchCasesForSave(); setShowSaveCaseModal(true); }}
-          className="fixed bottom-12 right-12 bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-4 rounded-full shadow-[0_0_20px_rgba(0,255,255,0.4)] z-50 font-bold tracking-widest flex items-center gap-3 hover:scale-105 transition-transform"
-        >
-          <span className="text-xl">💾</span> SAVE TO CASE
-        </button>
-      )}
-
-      {/* SAVE TO CASE Modal */}
-      {showSaveCaseModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-cyan-500 shadow-[0_0_30px_rgba(0,255,255,0.2)] p-8 rounded-lg w-full max-w-md">
-            <h2 className="text-xl font-bold tracking-widest text-cyan-300 mb-6 border-b border-cyan-900 pb-4">SAVE INVESTIGATION</h2>
-            <div className="space-y-3 mb-6 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-              {availableCases.length === 0 ? (
-                <div className="text-slate-400 text-sm italic">No open cases found. Create a new one first.</div>
-              ) : (
-                availableCases.map(c => (
-                  <button 
-                    key={c.case_id}
-                    onClick={() => handleSaveToCase(c.case_id)}
-                    className="w-full text-left p-3 border border-slate-700 bg-slate-800 hover:bg-slate-700 hover:border-cyan-500 rounded transition-colors flex justify-between items-center"
-                  >
-                    <div>
-                      <div className="text-cyan-400 font-mono text-xs">{c.case_id}</div>
-                      <div className="text-white text-sm mt-1">{c.title || c.subject_real_name || "Unnamed"}</div>
-                    </div>
-                    <span className="text-slate-400">➔</span>
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="flex gap-4 pt-4 border-t border-cyan-900">
-              <button onClick={() => setShowSaveCaseModal(false)} className="px-4 py-2 border border-slate-600 text-slate-400 hover:text-white rounded">CANCEL</button>
-              <button onClick={() => { setShowSaveCaseModal(false); navigate("/cases"); }} className="flex-1 bg-cyan-600/30 border border-cyan-400 text-cyan-300 hover:bg-cyan-500/40 rounded">CREATE NEW CASE</button>
-            </div>
-          </div>
-        </div>
-      )}
-      </div>
     </div>
   );
 }
